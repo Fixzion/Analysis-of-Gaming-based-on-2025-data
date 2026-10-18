@@ -1,0 +1,19 @@
+```{r}
+```
+
+# KDD (ETL)
+## Extracción
+
+```{r}
+df <- read.csv("10K Most Popular Gaming 2025.csv")
+summary(df)
+```
+
+```{r}
+str(df)
+```
+
+## Análisis exploratorio
+
+```{r}
+```
