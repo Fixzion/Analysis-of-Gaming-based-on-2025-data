@@ -1,0 +1,11 @@
+# Historial de R y sesiones
+.Rhistory
+.RData
+.Ruserdata
+
+# Caché de Quarto
+.quarto/
+_freeze/
+
+# Configuración local de Positron/VS Code
+.vscode/

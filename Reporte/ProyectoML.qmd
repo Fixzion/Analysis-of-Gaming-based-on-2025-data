@@ -1,19 +1,336 @@
+## Librerias
+
 ```{r}
+library(rpart)
+library(tidyverse)
+library(janitor)
+library(here)
 ```
 
-# KDD (ETL)
-## Extracción
+# KDD
+## ETL
+### Extracción
 
 ```{r}
-df <- read.csv("10K Most Popular Gaming 2025.csv")
+#| label: carga-datos
+df <- read_csv(
+  here("Data", "Raw", "10K Most Popular Gaming 2025.csv"),
+  show_col_types = FALSE
+) |>
+  select(-1) |>        # columna de índice sobrante
+  clean_names()
+```
+
+```{r}
+#|label: summary-df
 summary(df)
 ```
 
 ```{r}
+#| label: str-df
 str(df)
 ```
 
-## Análisis exploratorio
+```{r}
+head(df,5)
+```
+## Análisis exploratorio (EDA)
+### Calidad de los datos
+```{r}
+#| label: calidad-faltantes
+# Datos faltantes por variable
+df |>
+  summarise(across(everything(), ~ sum(is.na(.x)))) |>
+  pivot_longer(everything(), names_to = "variable", values_to = "n_na") |>
+  mutate(pct_na = round(100 * n_na / nrow(df), 1)) |>
+  arrange(desc(n_na))
+
+# ¿Hay ids repetidos?
+sum(duplicated(df$id))
+sum(duplicated(df$name))
+```
+- **'rating'** no tiene NA. La variable objetivo de la regresión está completa, así que no perdemos filas por ese lado. Es una buena noticia para esa línea.
+- Los faltantes son pocos en general. El peor caso entre las variables útiles es **'publishers'** con 5.5%, así que no hay ninguna columna que se deba descartar por exceso de NA.
+- **'genres'** se pueden conservar con una categoría “Desconocido”.
+- **'released'** (1.8%) es un costo bajo para la línea de temporadas: sin fecha no hay temporada, pero solo se pierden unos 177 registros.
+- **'developers'** y **'publishers'** probablemente tengan muchísimos valores distintos (la mayoría con un solo juego). Eso será un problema de cardinalidad más que de faltantes, y lo veremos en el paso 6.
+- **'description'** e **'image'** quedan fuera de la lista de variables útiles, así que sus NA no nos preocupan.
+
 
 ```{r}
+#| label: calidad-vacios
+# Cadenas vacías o espacios que no cuentan como NA pero equivalen a un faltante
+df |>
+  summarise(across(where(is.character), ~ sum(str_trim(.x) == "", na.rm = TRUE))) |>
+  pivot_longer(everything(), names_to = "variable", values_to = "n_vacios") |>
+  filter(n_vacios > 0)
 ```
+
+
+```{r}
+#| label: calidad-duplicados
+# Ids y nombres repetidos
+sum(duplicated(df$id))
+sum(duplicated(df$name))
+
+# Filas completamente duplicadas
+sum(duplicated(df))
+
+# Ver los nombres repetidos, si los hay
+df |>
+  count(name, sort = TRUE) |>
+  filter(n > 1) |>
+  head(10)
+```
+
+
+```{r}
+#| label: calidad-valores-raros
+fechas <- df |>
+  mutate(released_date = dmy(released))
+
+# NA originales vs. NA nuevos (fallos de formato)
+sum(is.na(df$released))
+sum(is.na(fechas$released_date))
+
+# Lanzamientos posteriores a la última actualización del dataset
+fechas |>
+  filter(released_date > max(updated, na.rm = TRUE)) |>
+  select(name, released_date, rating, suggestions_count) |>
+  head(10)
+
+# Ceros en suggestions_count
+sum(df$suggestions_count == 0, na.rm = TRUE)
+```
+
+```{r}
+#| label: calidad-duplicados-detalle
+# Ids repetidos cuyas filas NO son idénticas (los que distinct() no elimina)
+df |>
+  distinct() |>
+  add_count(id) |>
+  filter(n > 1) |>
+  arrange(id, updated) |>
+  select(id, name, updated, rating, suggestions_count, n)
+```
+
+##### **Primeras conclusiones**
+- Se reviso si existián cadenas vacias dentro de las variables que pudieran ser intrepretadas como valores faltantes (NA's), sin embargo, no se encontro ninguna columna de texto con vacíos	y por lo tanto los faltantes son NA reales por lo que no hay que recodificar nada.
+- Al investigar la cantidad de NA, se encontro que la variable 'released'	tien 177 NA (1.8%) y siguen siendo 177 tras dmy().El formato de fecha es consistente, no hubo fallos de conversión
+- **'suggestions_count' = 0:**	55 filas (0.55%) estan representadas con 0, siendo un numero significativamente poco representante sobre la cantidad total. De cualquier manera se debe decidir si son faltantes disfrazados o realmente representan un valor.
+- **'rating** Al revisar el *summary()* se noto que el valore minimo de la posible variable objetivo es de 3.29.
+- Se encontraron ids duplicados	con un total de 1,025 (~10%).
+- Interezantemente tambien se econtraron la misma cantidad de nombres duplicados (1,025), así que cada id parece corresponder a un solo nombre.
+- Se determino que existen filas idénticas en un total de 1,005	copias exactas.
+- 20 ids aparecen dos veces, en instancias de tiempo distintas. 
+
+
+**EXTRA:** Se decidio que antes de análizar el estado de la variable objetivo, se eliminarian únicamente las entradas duplicadas, que representan el mismo juego en distintos momentos. El qué instacia se borra y el porque se explican en los siguientes puntos.
+- **¿Cuál borrar?** Se conserva la instancia más reciente de cada id porque refleja el estado actual del juego; entre capturas distintas el rating cambia (entre 0.01 y 0.12 en los pares revisados).
+- **¿Por qué borrar ahora?** Como el siguiente paso es análizar la distribución de las variables, tener observaciones repetidas puede inflar los valores de forma injusta y sesgarlos.
+
+```{r}
+#| label: df-unico
+df1 <- df |>
+  distinct() |>
+  slice_max(updated, by = id, with_ties = FALSE)
+
+nrow(df1)             # debería ser 8978
+sum(duplicated(df1$id))  # debería ser 0
+```
+
+#### Variable objetivo candidata: 'rating'
+
+```{r}
+#| label: rating-resumen
+# Estadísticos descriptivos
+df1 |>
+  summarise(
+    n       = n(),
+    media   = mean(rating),
+    mediana = median(rating),
+    sd      = sd(rating),
+    min     = min(rating),
+    q1      = quantile(rating, 0.25),
+    q3      = quantile(rating, 0.75),
+    max     = max(rating),
+    asimetria = mean((rating - mean(rating))^3) / sd(rating)^3
+  ) |>
+  mutate(across(where(is.numeric), ~ round(.x, 3)))
+```
+
+
+```{r}
+#| label: rating-histograma
+p <- ggplot(df1, aes(rating)) +
+  geom_histogram(binwidth = 0.05, fill = "steelblue", color = "white") +
+  geom_vline(aes(xintercept = mean(rating)), color = "red", linetype = "dashed") +
+  geom_vline(aes(xintercept = median(rating)), color = "darkgreen", linetype = "dashed") +
+  labs(
+    title = "Distribución de rating",
+    subtitle = "Rojo: media, verde: mediana",
+    x = "Rating", y = "Frecuencia"
+  )
+
+dir.create(here("Figuras"), showWarnings = FALSE)
+ggsave(here("Figuras", "histograma_rating.png"), plot = p, width = 8, height = 5, dpi = 300)
+print(p)
+```
+
+```{r}
+#| label: rating-boxplot
+p <- ggplot(df1, aes(x = rating)) +
+  geom_boxplot(fill = "steelblue", outlier.color = "red") +
+  labs(title = "Boxplot de rating", x = "Rating") +
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
+
+dir.create(here("Figuras"), showWarnings = FALSE)
+ggsave(here("Figuras", "boxplot_rating.png"), plot = p, width = 8, height = 5, dpi = 300)
+print(p)
+```
+
+
+```{r}
+#| label: rating-atipicos
+# Atípicos según el criterio del rango intercuartílico
+limites <- df1 |>
+  summarise(
+    q1 = quantile(rating, 0.25),
+    q3 = quantile(rating, 0.75)
+  ) |>
+  mutate(iqr = q3 - q1,
+         inf = q1 - 1.5 * iqr,
+         sup = q3 + 1.5 * iqr)
+limites
+
+df1 |>
+  filter(rating < limites$inf | rating > limites$sup) |>
+  summarise(
+    n_atipicos = n(),
+    bajos = sum(rating < limites$inf),
+    altos = sum(rating > limites$sup)
+  )
+
+# Juegos con rating máximo
+df1 |>
+  filter(rating >= 4.8) |>
+  select(name, rating, suggestions_count) |>
+  arrange(desc(rating)) |>
+  head(15)
+```
+
+**Interpretación:**
+- La desviación de 0.34 confirma la variabilidad baja, pero la decisión sobre la viabilidad de la regresión sigue pendiente.
+- Comparado con los resultados de summary() inicial (10,003 filas con duplicados), la mediana subió de 3.89 a 3.93 y el rango intercuartílico se ensanchó (Q1 pasó de 3.75 a 3.72 y Q3 de 4.14 a 4.17), posiblemente porque las copias se concentraban en la zona central.
+- Los límites del IQR son Q1 = 3.72, Q3 = 4.17 e IQR = 0.45, de modo que el rango “normal” va de 3.05 a 4.84. Solo hay 2 atípicos, ambos altos (5.00 y 4.86) y ninguno bajo.
+- El histograma no es una campana limpia. El cuerpo principal va de ~3.7 a ~4.4. Hay un grupo separado a la izquierda (3.3–3.5), un hueco casi vacío entre 3.5 y 3.68, y una caída brusca después de 4.4 con una cola corta hacia 5.
+- La variabilidad es estrecha. Casi todo el dataset cabe en un rango de ~1.1 puntos, lo que anticipa una regresión difícil, aunque no es concluyente hasta el paso 7.
+
+#### Variables numéricas 
+```{r}
+#| label: sugerencias-resumen
+df1 |>
+  summarise(
+    media   = mean(suggestions_count),
+    mediana = median(suggestions_count),
+    sd      = sd(suggestions_count),
+    min     = min(suggestions_count),
+    max     = max(suggestions_count)
+  ) |>
+  mutate(across(everything(), ~ round(.x, 1)))
+
+# Los juegos con más sugerencias: ¿qué tipo de juegos son?
+df1 |>
+  arrange(desc(suggestions_count)) |>
+  select(name, rating, suggestions_count) |>
+  head(10)
+```
+
+
+```{r}
+#| label: sugerencias-grafica
+p <- ggplot(df1, aes(suggestions_count)) +
+  geom_histogram(bins = 40, fill = "steelblue", color = "white") +
+  labs(title = "Distribución de suggestions_count",
+       x = "Sugerencias", y = "Frecuencia")
+
+ggsave(filename = "Histograma_DistribuciónSugerencias.png",
+       plot = p,
+       path = "../Figuras",
+       width = 8, height = 5, dpi = 300)
+print(p)
+```
+
+
+```{r}
+#| label: sugerencias-vs-rating
+p <- ggplot(df1, aes(suggestions_count, rating)) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(method = "gam", color = "red") +
+  labs(title = "Rating vs. suggestions_count",
+       x = "Sugerencias", y = "Rating")
+
+# Correlación de Spearman (no asume linealidad ni normalidad)
+cor(df1$suggestions_count, df1$rating, method = "spearman")
+
+ggsave(filename = "Rating vs Sugerencias - Scatterplot.png",
+       plot = p,
+       path = "../Figuras",
+       width = 8, height = 5, dpi = 300)
+print(p)
+```
+
+
+```{r}
+#| label: updated-exploracion
+# ¿Cuándo se actualizaron los registros?
+df1 |>
+  count(anio_update = year(updated)) |>
+  ggplot(aes(anio_update, n)) +
+  geom_col(fill = "steelblue") +
+  labs(title = "Registros por año de última actualización",
+       x = "Año", y = "Juegos")
+
+ggsave(filename = "Actualizaciones por Año - Barplot.png",
+       plot = p,
+       path = "../Figuras",
+       width = 8, height = 5, dpi = 300)
+
+print(p)
+```
+
+
+```{r}
+#| label: updated-exploracion 2
+# Para investigar el hueco de rating: ¿se relaciona con la fecha de actualización?
+p <- ggplot(df1, aes(updated, rating)) +
+  geom_point(alpha = 0.2) +
+  labs(title = "Rating vs. fecha de actualización",
+       x = "Actualizado", y = "Rating")
+
+ggsave(filename = "Rating vs Fecha - Scatterplot.png",
+       plot = p,
+       path = "../Figuras",
+       width = 8, height = 5, dpi = 300)
+
+print(p)
+```
+
+
+#### 5. Variable temporal: released
+Convertirla a fecha y revisar el rango de años, la cantidad de juegos por año y por mes o temporada. Este paso decide si la línea de clasificación por temporada es factible.
+
+#### 6. Variables categóricas multivalor
+genres, platforms, developers y publishers vienen con varios valores por celda. En el EDA los separamos de forma temporal para contar frecuencias: géneros más comunes, plataformas más comunes, cuántos géneros tiene un juego típico, cuántos developers distintos hay (probablemente muchos con un solo juego, lo que importa para decidir cómo codificarlos).
+
+#### 7. Relaciones con rating
+Rating por género, por plataforma, por año de lanzamiento y por cantidad de sugerencias. Es aquí donde se ve si las variables disponibles tienen señal predictiva o si el rating es casi puro ruido.
+
+#### 8. Relaciones para la línea alternativa
+Distribución de géneros por temporada o trimestre, para ver si existe algún patrón estacional visible. Es una revisión corta, solo para decidir si vale la pena seguir esa línea.
+
+#### 9. Variables de texto e imagen (description, image, name)
+Revisión rápida: porcentaje de descripciones vacías, idioma y longitud. Probablemente se descarten, pero conviene documentarlo.
+
+#### 10. Resumen de hallazgos
+Una lista corta de lo encontrado y las decisiones que se derivan: qué variables se eliminan, cuáles hay que transformar, cuántos faltantes tratar y cuál de las dos líneas objetivo es más viable. Esto es lo que te permite cerrar el EDA y definir el objetivo, como querías.
