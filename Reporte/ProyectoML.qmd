@@ -316,9 +316,123 @@ ggsave(filename = "Rating vs Fecha - Scatterplot.png",
 print(p)
 ```
 
+```{r}
+#| label: rating-grupo-bajo
+df1 |>
+  mutate(grupo = if_else(rating < 3.6, "bajo (<3.6)", "resto")) |>
+  group_by(grupo) |>
+  summarise(
+    n = n(),
+    sugerencias_mediana = median(suggestions_count),
+    updated_mediana = median(updated),
+    pct_sin_fecha = round(100 * mean(is.na(released)), 1),
+    pct_sin_genero = round(100 * mean(is.na(genres)), 1)
+  )
+```
 
-#### 5. Variable temporal: released
-Convertirla a fecha y revisar el rango de años, la cantidad de juegos por año y por mes o temporada. Este paso decide si la línea de clasificación por temporada es factible.
+**Interpretaciones (2):**
+- **registros por año de última actualización:** Hay unos 5,500 registros actualizados en 2025 (cerca del 60% del total), 1,660 en 2024 y 1,220 en 2023. Entre 2023 y 2025 suman más del 90%. De 2019 a 2022 hay muy pocos, y 2020 y 2021 casi no aparecen.
+- **distribución de 'suggestions_count':** Es casi una campana, con el pico entre 250 y 350 sugerencias (unos 800 juegos por barra), y una cola derecha corta que llega a ~1,700. Solo se ve una cola fina más allá de ~700.
+- **'rating' vs 'suggestions_count':** 
+  - Hay líneas densas en valores exactos (4.00, 3.50, 3.30) y otras en fracciones (4.33, 4.67, 4.50). *Es posible que muchos ratings sean promedios de muy pocos votos.*
+  - La curva roja baja de ~3.97 (sin sugerencias) a ~3.90 hacia las 500, y luego a ~3.75 en 1,700.
+  - El valor de relación de spearman (-0.0463951.), es tambien prueba de que no existe una relación entra las variables.
+- **'rating' vs. fecha de actualización:** No se observa una relación entre updated y rating.
+- **Grupo bajo:** El grupo bajo es el 22% del dataset y no se distingue claramente por ninguna de estas variables. (Faltaria verificar con el resto de variables no numericas).
+
+#### Variable temporal
+```{r}
+#| label: released-preparacion
+corte <- as_date(max(df1$updated))   # fecha de extracción aproximada
+
+eda_fechas <- df1 |>
+  mutate(
+    released_date = dmy(released),
+    anio = year(released_date),
+    antiguedad = as.numeric(corte - released_date) / 365.25  # negativa = aún no lanzado
+  )
+
+eda_fechas |>
+  summarise(
+    primera   = min(released_date, na.rm = TRUE),
+    ultima    = max(released_date, na.rm = TRUE),
+    n_na      = sum(is.na(released_date)),
+    n_futuros = sum(released_date > corte, na.rm = TRUE)
+  )
+```
+
+```{r}
+#| label: released-por-anio
+eda_fechas |>
+  filter(!is.na(anio)) |>
+  count(anio) |>
+  ggplot(aes(anio, n)) +
+  geom_col(fill = "steelblue") +
+  labs(title = "Juegos por año de lanzamiento", x = "Año", y = "Juegos")
+```
+
+```{r}
+#| label: released-fechas-comodin
+eda_fechas |>
+  filter(!is.na(released_date)) |>
+  count(released_date, sort = TRUE) |>
+  head(10)
+```
+
+```{r}
+#| label: released-rating-por-anio
+# Años con suficientes juegos para comparar
+anios_ok <- eda_fechas |> count(anio) |> filter(n >= 30) |> pull(anio)
+
+eda_fechas |>
+  filter(anio %in% anios_ok) |>
+  ggplot(aes(factor(anio), rating)) +
+  geom_boxplot(fill = "steelblue", outlier.alpha = 0.3) +
+  labs(title = "Rating por año de lanzamiento",
+       x = "Año", y = "Rating") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5))
+
+# Correlación con la antigüedad (Spearman)
+cor(eda_fechas$antiguedad, eda_fechas$rating,
+    method = "spearman", use = "complete.obs")
+```
+
+```{r}
+#| label: released-na-vs-rating
+# ¿Los juegos sin fecha se parecen al resto en rating?
+eda_fechas |>
+  group_by(sin_fecha = is.na(released_date)) |>
+  summarise(n = n(),
+            rating_media = round(mean(rating), 2),
+            rating_mediana = median(rating))
+```
+
+```{r}
+#| label: released-na-detalle
+eda_fechas |>
+  filter(is.na(released_date)) |>
+  arrange(desc(rating)) |>
+  select(name, rating, suggestions_count, platforms) |>
+  head(15)
+```
+
+```{r}
+#| label: rating-bajo-por-decada
+eda_fechas |>
+  filter(!is.na(anio)) |>
+  mutate(decada = floor(anio / 10) * 10) |>
+  group_by(decada) |>
+  summarise(n = n(), pct_rating_bajo = round(100 * mean(rating < 3.6), 1)) |>
+  filter(n >= 30)
+```
+
+
+**Interpretación (3):**
+- Solo el año de released es fiable; en juegos antiguos, el mes y el día son un “1 de enero” de relleno.
+- Tiene relación no lineal y modesta con rating: más ratings altos en los noventa y principios de los 2000, y más ratings bajos en los 2010.
+- 155 juegos sin fecha (1.7%): ni todos sin lanzar ni todos completos. Hay que decidir su tratamiento.
+- 4 lanzamientos posteriores al corte de extracción.
+- La antigüedad no aporta información extra sobre **'anio'** (es una transformación lineal), así que para modelar se usaría solo año.
 
 #### 6. Variables categóricas multivalor
 genres, platforms, developers y publishers vienen con varios valores por celda. En el EDA los separamos de forma temporal para contar frecuencias: géneros más comunes, plataformas más comunes, cuántos géneros tiene un juego típico, cuántos developers distintos hay (probablemente muchos con un solo juego, lo que importa para decidir cómo codificarlos).
@@ -326,11 +440,8 @@ genres, platforms, developers y publishers vienen con varios valores por celda. 
 #### 7. Relaciones con rating
 Rating por género, por plataforma, por año de lanzamiento y por cantidad de sugerencias. Es aquí donde se ve si las variables disponibles tienen señal predictiva o si el rating es casi puro ruido.
 
-#### 8. Relaciones para la línea alternativa
-Distribución de géneros por temporada o trimestre, para ver si existe algún patrón estacional visible. Es una revisión corta, solo para decidir si vale la pena seguir esa línea.
-
-#### 9. Variables de texto e imagen (description, image, name)
+#### 8. Variables de texto e imagen (description, image, name)
 Revisión rápida: porcentaje de descripciones vacías, idioma y longitud. Probablemente se descarten, pero conviene documentarlo.
 
-#### 10. Resumen de hallazgos
+#### 9. Resumen de hallazgos
 Una lista corta de lo encontrado y las decisiones que se derivan: qué variables se eliminan, cuáles hay que transformar, cuántos faltantes tratar y cuál de las dos líneas objetivo es más viable. Esto es lo que te permite cerrar el EDA y definir el objetivo, como querías.
