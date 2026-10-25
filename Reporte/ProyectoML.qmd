@@ -50,39 +50,39 @@ head(df,5)
 ```
 
 ## Análisis exploratorio (EDA)
-
 ### Calidad de los datos
-
 ```{r}
 #| label: df_status
 df_status(df)
 ```
+**Unique** muestra un valor distinto en las variables id y name (9,978), compradas con el valor total que mostro la función str (10,003). Por lo tanto es correcto creer que existen observaciones duplicadas.
 
-Tamaño: 10,003 filas. Duplicados: unique de id y de name debería ser 8,978, o sea 1,025 menos que las filas. NA (q_na): description 964, publishers 555, genres 404, developers 302, released 177, image 42, platforms 13. El resto en cero, incluido rating. Ceros (q_zeros): suggestions_count debería marcar 55 (0.55%) y rating, 0. Tipos (type): released aparece como texto y updated como fecha-hora. Esto justifica convertir released con dmy(). Limitación: df_status() solo cuenta NA reales. La revisión de cadenas vacías (ninguna) se hizo aparte y conviene mencionarla en una línea.
 
 ### Eliminación de duplicados y estado
 
 ```{r}
 #| label: df-unico
-# df1: sin duplicados (copias exactas eliminadas; de cada id se conserva el registro más reciente)
+# df1: Copias exactas eliminadas, de cada id se conserva el registro más reciente.
 df1 <- df |>
   distinct() |>
-  slice_max(updated, by = id, with_ties = FALSE) |>
-  select(-id)
+  slice_max(updated, by = id, with_ties = FALSE)
 
-nrow(df1)   # 8978
+str(df1)
 ```
 
 ```{r}
 #| label: status-df1
-status_df1 <- df_status(df1, print_results = FALSE)
-status_df1
+df_status(df1)
 ```
 
-10,003 − 1,025 copias exactas = 8,978 filas. De ahí, 20 ids aparecían dos veces con contenido distinto (el rating cambia entre 0.01 y 0.12 en los pares revisados). Se conserva el registro de updated más reciente porque refleja el estado actual del juego, y quedan 8,978 juegos únicos. Esta decisión va antes de las distribuciones porque las copias inflarían conteos y frecuencias.
+- **Tamaño:** 10,003 filas. 
+- **Duplicados:** unique de id y de name son 8,978 filas, o sea 1,025 menos filas. (Ver str) 
+- **NA (q_na):** description 964, publishers 555, genres 404, developers 302, released 177, image 42, platforms 13. El resto en cero, incluido rating. 
+- **Ceros (q_zeros):** suggestions_count debería marcar 55 (0.55%) y rating, 0. 
+- **Tipos (type):** released aparece como texto y updated como fecha-hora. Esto justifica convertir released con dmy(). 
+- **Limitación:** df_status() solo cuenta NA reales. La revisión de cadenas vacías (ninguna) se hizo aparte y conviene mencionarla en una línea.
 
 ### Integridad
-
 ```{r}
 #| label: integridad
 data_integrity(df1)
