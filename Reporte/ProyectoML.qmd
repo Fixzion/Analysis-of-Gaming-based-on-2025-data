@@ -1,14 +1,28 @@
+---
+title: "Analysis-of-Gaming-based-on-2025-data"
+author: "Oscar Romero Mendoza"
+format:
+  html:
+    embed-resources: true
+execute:
+  warning: false
+  message: false
+---
+
 ## Librerias
 
 ```{r}
 library(rpart)
 library(tidyverse)
+library(funModeling)
 library(janitor)
 library(here)
 ```
 
 # KDD
+
 ## ETL
+
 ### Extracción
 
 ```{r}
@@ -34,414 +48,169 @@ str(df)
 ```{r}
 head(df,5)
 ```
+
 ## Análisis exploratorio (EDA)
+
 ### Calidad de los datos
-```{r}
-#| label: calidad-faltantes
-# Datos faltantes por variable
-df |>
-  summarise(across(everything(), ~ sum(is.na(.x)))) |>
-  pivot_longer(everything(), names_to = "variable", values_to = "n_na") |>
-  mutate(pct_na = round(100 * n_na / nrow(df), 1)) |>
-  arrange(desc(n_na))
-
-# ¿Hay ids repetidos?
-sum(duplicated(df$id))
-sum(duplicated(df$name))
-```
-- **'rating'** no tiene NA. La variable objetivo de la regresión está completa, así que no perdemos filas por ese lado. Es una buena noticia para esa línea.
-- Los faltantes son pocos en general. El peor caso entre las variables útiles es **'publishers'** con 5.5%, así que no hay ninguna columna que se deba descartar por exceso de NA.
-- **'genres'** se pueden conservar con una categoría “Desconocido”.
-- **'released'** (1.8%) es un costo bajo para la línea de temporadas: sin fecha no hay temporada, pero solo se pierden unos 177 registros.
-- **'developers'** y **'publishers'** probablemente tengan muchísimos valores distintos (la mayoría con un solo juego). Eso será un problema de cardinalidad más que de faltantes, y lo veremos en el paso 6.
-- **'description'** e **'image'** quedan fuera de la lista de variables útiles, así que sus NA no nos preocupan.
-
 
 ```{r}
-#| label: calidad-vacios
-# Cadenas vacías o espacios que no cuentan como NA pero equivalen a un faltante
-df |>
-  summarise(across(where(is.character), ~ sum(str_trim(.x) == "", na.rm = TRUE))) |>
-  pivot_longer(everything(), names_to = "variable", values_to = "n_vacios") |>
-  filter(n_vacios > 0)
+#| label: df_status
+df_status(df)
 ```
 
+Tamaño: 10,003 filas. Duplicados: unique de id y de name debería ser 8,978, o sea 1,025 menos que las filas. NA (q_na): description 964, publishers 555, genres 404, developers 302, released 177, image 42, platforms 13. El resto en cero, incluido rating. Ceros (q_zeros): suggestions_count debería marcar 55 (0.55%) y rating, 0. Tipos (type): released aparece como texto y updated como fecha-hora. Esto justifica convertir released con dmy(). Limitación: df_status() solo cuenta NA reales. La revisión de cadenas vacías (ninguna) se hizo aparte y conviene mencionarla en una línea.
 
-```{r}
-#| label: calidad-duplicados
-# Ids y nombres repetidos
-sum(duplicated(df$id))
-sum(duplicated(df$name))
-
-# Filas completamente duplicadas
-sum(duplicated(df))
-
-# Ver los nombres repetidos, si los hay
-df |>
-  count(name, sort = TRUE) |>
-  filter(n > 1) |>
-  head(10)
-```
-
-
-```{r}
-#| label: calidad-valores-raros
-fechas <- df |>
-  mutate(released_date = dmy(released))
-
-# NA originales vs. NA nuevos (fallos de formato)
-sum(is.na(df$released))
-sum(is.na(fechas$released_date))
-
-# Lanzamientos posteriores a la última actualización del dataset
-fechas |>
-  filter(released_date > max(updated, na.rm = TRUE)) |>
-  select(name, released_date, rating, suggestions_count) |>
-  head(10)
-
-# Ceros en suggestions_count
-sum(df$suggestions_count == 0, na.rm = TRUE)
-```
-
-```{r}
-#| label: calidad-duplicados-detalle
-# Ids repetidos cuyas filas NO son idénticas (los que distinct() no elimina)
-df |>
-  distinct() |>
-  add_count(id) |>
-  filter(n > 1) |>
-  arrange(id, updated) |>
-  select(id, name, updated, rating, suggestions_count, n)
-```
-
-##### **Primeras conclusiones**
-- Se reviso si existián cadenas vacias dentro de las variables que pudieran ser intrepretadas como valores faltantes (NA's), sin embargo, no se encontro ninguna columna de texto con vacíos	y por lo tanto los faltantes son NA reales por lo que no hay que recodificar nada.
-- Al investigar la cantidad de NA, se encontro que la variable 'released'	tien 177 NA (1.8%) y siguen siendo 177 tras dmy().El formato de fecha es consistente, no hubo fallos de conversión
-- **'suggestions_count' = 0:**	55 filas (0.55%) estan representadas con 0, siendo un numero significativamente poco representante sobre la cantidad total. De cualquier manera se debe decidir si son faltantes disfrazados o realmente representan un valor.
-- **'rating** Al revisar el *summary()* se noto que el valore minimo de la posible variable objetivo es de 3.29.
-- Se encontraron ids duplicados	con un total de 1,025 (~10%).
-- Interezantemente tambien se econtraron la misma cantidad de nombres duplicados (1,025), así que cada id parece corresponder a un solo nombre.
-- Se determino que existen filas idénticas en un total de 1,005	copias exactas.
-- 20 ids aparecen dos veces, en instancias de tiempo distintas. 
-
-
-**EXTRA:** Se decidio que antes de análizar el estado de la variable objetivo, se eliminarian únicamente las entradas duplicadas, que representan el mismo juego en distintos momentos. El qué instacia se borra y el porque se explican en los siguientes puntos.
-- **¿Cuál borrar?** Se conserva la instancia más reciente de cada id porque refleja el estado actual del juego; entre capturas distintas el rating cambia (entre 0.01 y 0.12 en los pares revisados).
-- **¿Por qué borrar ahora?** Como el siguiente paso es análizar la distribución de las variables, tener observaciones repetidas puede inflar los valores de forma injusta y sesgarlos.
+### Eliminación de duplicados y estado
 
 ```{r}
 #| label: df-unico
+# df1: sin duplicados (copias exactas eliminadas; de cada id se conserva el registro más reciente)
 df1 <- df |>
   distinct() |>
-  slice_max(updated, by = id, with_ties = FALSE)
+  slice_max(updated, by = id, with_ties = FALSE) |>
+  select(-id)
 
-nrow(df1)             # debería ser 8978
-sum(duplicated(df1$id))  # debería ser 0
-```
-
-#### Variable objetivo candidata: 'rating'
-
-```{r}
-#| label: rating-resumen
-# Estadísticos descriptivos
-df1 |>
-  summarise(
-    n       = n(),
-    media   = mean(rating),
-    mediana = median(rating),
-    sd      = sd(rating),
-    min     = min(rating),
-    q1      = quantile(rating, 0.25),
-    q3      = quantile(rating, 0.75),
-    max     = max(rating),
-    asimetria = mean((rating - mean(rating))^3) / sd(rating)^3
-  ) |>
-  mutate(across(where(is.numeric), ~ round(.x, 3)))
-```
-
-
-```{r}
-#| label: rating-histograma
-p <- ggplot(df1, aes(rating)) +
-  geom_histogram(binwidth = 0.05, fill = "steelblue", color = "white") +
-  geom_vline(aes(xintercept = mean(rating)), color = "red", linetype = "dashed") +
-  geom_vline(aes(xintercept = median(rating)), color = "darkgreen", linetype = "dashed") +
-  labs(
-    title = "Distribución de rating",
-    subtitle = "Rojo: media, verde: mediana",
-    x = "Rating", y = "Frecuencia"
-  )
-
-dir.create(here("Figuras"), showWarnings = FALSE)
-ggsave(here("Figuras", "histograma_rating.png"), plot = p, width = 8, height = 5, dpi = 300)
-print(p)
+nrow(df1)   # 8978
 ```
 
 ```{r}
-#| label: rating-boxplot
-p <- ggplot(df1, aes(x = rating)) +
-  geom_boxplot(fill = "steelblue", outlier.color = "red") +
-  labs(title = "Boxplot de rating", x = "Rating") +
-  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
-
-dir.create(here("Figuras"), showWarnings = FALSE)
-ggsave(here("Figuras", "boxplot_rating.png"), plot = p, width = 8, height = 5, dpi = 300)
-print(p)
+#| label: status-df1
+status_df1 <- df_status(df1, print_results = FALSE)
+status_df1
 ```
 
+10,003 − 1,025 copias exactas = 8,978 filas. De ahí, 20 ids aparecían dos veces con contenido distinto (el rating cambia entre 0.01 y 0.12 en los pares revisados). Se conserva el registro de updated más reciente porque refleja el estado actual del juego, y quedan 8,978 juegos únicos. Esta decisión va antes de las distribuciones porque las copias inflarían conteos y frecuencias.
+
+### Integridad
 
 ```{r}
-#| label: rating-atipicos
-# Atípicos según el criterio del rango intercuartílico
-limites <- df1 |>
-  summarise(
-    q1 = quantile(rating, 0.25),
-    q3 = quantile(rating, 0.75)
-  ) |>
-  mutate(iqr = q3 - q1,
-         inf = q1 - 1.5 * iqr,
-         sup = q3 + 1.5 * iqr)
-limites
-
-df1 |>
-  filter(rating < limites$inf | rating > limites$sup) |>
-  summarise(
-    n_atipicos = n(),
-    bajos = sum(rating < limites$inf),
-    altos = sum(rating > limites$sup)
-  )
-
-# Juegos con rating máximo
-df1 |>
-  filter(rating >= 4.8) |>
-  select(name, rating, suggestions_count) |>
-  arrange(desc(rating)) |>
-  head(15)
+#| label: integridad
+data_integrity(df1)
 ```
 
-**Interpretación:**
-- La desviación de 0.34 confirma la variabilidad baja, pero la decisión sobre la viabilidad de la regresión sigue pendiente.
-- Comparado con los resultados de summary() inicial (10,003 filas con duplicados), la mediana subió de 3.89 a 3.93 y el rango intercuartílico se ensanchó (Q1 pasó de 3.75 a 3.72 y Q3 de 4.14 a 4.17), posiblemente porque las copias se concentraban en la zona central.
-- Los límites del IQR son Q1 = 3.72, Q3 = 4.17 e IQR = 0.45, de modo que el rango “normal” va de 3.05 a 4.84. Solo hay 2 atípicos, ambos altos (5.00 y 4.86) y ninguno bajo.
-- El histograma no es una campana limpia. El cuerpo principal va de ~3.7 a ~4.4. Hay un grupo separado a la izquierda (3.3–3.5), un hueco casi vacío entre 3.5 y 3.68, y una caída brusca después de 4.4 con una cola corta hacia 5.
-- La variabilidad es estrecha. Casi todo el dataset cabe en un rango de ~1.1 puntos, lo que anticipa una regresión difícil, aunque no es concluyente hasta el paso 7.
-
-#### Variables numéricas 
-```{r}
-#| label: sugerencias-resumen
-df1 |>
-  summarise(
-    media   = mean(suggestions_count),
-    mediana = median(suggestions_count),
-    sd      = sd(suggestions_count),
-    min     = min(suggestions_count),
-    max     = max(suggestions_count)
-  ) |>
-  mutate(across(everything(), ~ round(.x, 1)))
-
-# Los juegos con más sugerencias: ¿qué tipo de juegos son?
-df1 |>
-  arrange(desc(suggestions_count)) |>
-  select(name, rating, suggestions_count) |>
-  head(10)
-```
-
+### Variables numericas
 
 ```{r}
-#| label: sugerencias-grafica
-p <- ggplot(df1, aes(suggestions_count)) +
-  geom_histogram(bins = 40, fill = "steelblue", color = "white") +
-  labs(title = "Distribución de suggestions_count",
-       x = "Sugerencias", y = "Frecuencia")
-
-ggsave(filename = "Histograma_DistribuciónSugerencias.png",
-       plot = p,
-       path = "../Figuras",
-       width = 8, height = 5, dpi = 300)
-print(p)
-```
-
-
-```{r}
-#| label: sugerencias-vs-rating
-p <- ggplot(df1, aes(suggestions_count, rating)) +
-  geom_point(alpha = 0.2) +
-  geom_smooth(method = "gam", color = "red") +
-  labs(title = "Rating vs. suggestions_count",
-       x = "Sugerencias", y = "Rating")
-
-# Correlación de Spearman (no asume linealidad ni normalidad)
-cor(df1$suggestions_count, df1$rating, method = "spearman")
-
-ggsave(filename = "Rating vs Sugerencias - Scatterplot.png",
-       plot = p,
-       path = "../Figuras",
-       width = 8, height = 5, dpi = 300)
-print(p)
-```
-
-
-```{r}
-#| label: updated-exploracion
-# ¿Cuándo se actualizaron los registros?
-df1 |>
-  count(anio_update = year(updated)) |>
-  ggplot(aes(anio_update, n)) +
-  geom_col(fill = "steelblue") +
-  labs(title = "Registros por año de última actualización",
-       x = "Año", y = "Juegos")
-
-ggsave(filename = "Actualizaciones por Año - Barplot.png",
-       plot = p,
-       path = "../Figuras",
-       width = 8, height = 5, dpi = 300)
-
-print(p)
-```
-
-
-```{r}
-#| label: updated-exploracion 2
-# Para investigar el hueco de rating: ¿se relaciona con la fecha de actualización?
-p <- ggplot(df1, aes(updated, rating)) +
-  geom_point(alpha = 0.2) +
-  labs(title = "Rating vs. fecha de actualización",
-       x = "Actualizado", y = "Rating")
-
-ggsave(filename = "Rating vs Fecha - Scatterplot.png",
-       plot = p,
-       path = "../Figuras",
-       width = 8, height = 5, dpi = 300)
-
-print(p)
+#| label: datos-numericos
+df_num <- df1 |>
+  mutate(anio = year(dmy(released))) |>
+  select(rating, suggestions_count, anio)
 ```
 
 ```{r}
-#| label: rating-grupo-bajo
-df1 |>
-  mutate(grupo = if_else(rating < 3.6, "bajo (<3.6)", "resto")) |>
-  group_by(grupo) |>
-  summarise(
-    n = n(),
-    sugerencias_mediana = median(suggestions_count),
-    updated_mediana = median(updated),
-    pct_sin_fecha = round(100 * mean(is.na(released)), 1),
-    pct_sin_genero = round(100 * mean(is.na(genres)), 1)
-  )
+#| label: plot-num
+plot_num(df_num, bins = 30)
 ```
 
-**Interpretaciones (2):**
-- **registros por año de última actualización:** Hay unos 5,500 registros actualizados en 2025 (cerca del 60% del total), 1,660 en 2024 y 1,220 en 2023. Entre 2023 y 2025 suman más del 90%. De 2019 a 2022 hay muy pocos, y 2020 y 2021 casi no aparecen.
-- **distribución de 'suggestions_count':** Es casi una campana, con el pico entre 250 y 350 sugerencias (unos 800 juegos por barra), y una cola derecha corta que llega a ~1,700. Solo se ve una cola fina más allá de ~700.
-- **'rating' vs 'suggestions_count':** 
-  - Hay líneas densas en valores exactos (4.00, 3.50, 3.30) y otras en fracciones (4.33, 4.67, 4.50). *Es posible que muchos ratings sean promedios de muy pocos votos.*
-  - La curva roja baja de ~3.97 (sin sugerencias) a ~3.90 hacia las 500, y luego a ~3.75 en 1,700.
-  - El valor de relación de spearman (-0.0463951.), es tambien prueba de que no existe una relación entra las variables.
-- **'rating' vs. fecha de actualización:** No se observa una relación entre updated y rating.
-- **Grupo bajo:** El grupo bajo es el 22% del dataset y no se distingue claramente por ninguna de estas variables. (Faltaria verificar con el resto de variables no numericas).
+```{r}
+#| label: profiling-num
+profiling_num(df_num)
+```
+
+```{r}
+#| label: umbrales-tukey
+map(df_num, \(x) tukey_outlier(x[!is.na(x)]))
+```
+
+**Interpretación:** *rating (objetivo)*
+
+Media 3.91, mediana 3.93, desviación estándar 0.34, rango de 3.29 a 5.00 y mitad central entre 3.72 y 4.17. Asimetría de -0.18 con la fórmula manual. profiling_num() puede dar un valor ligeramente distinto. El histograma no es una campana: hay un bloque entre 3.3 y 3.5, un hueco casi vacío entre 3.5 y 3.68, un cuerpo principal hasta \~4.4 y una cola corta hacia 5. La causa del hueco sigue sin explicarse. Por IQR, los límites rondan 3.05 y 4.84, y solo hay 2 atípicos altos (5.00 y 4.86). Línea base para la regresión: predecir siempre la media da un RMSE de \~0.34.
+
+*suggestions_count*
+
+Media 348, mediana 338, desviación estándar 182, de 0 a 1,729. Casi simétrica, con cola derecha moderada: no requiere transformación. Su significado exacto (probablemente juegos similares sugeridos en la fuente, no reseñas) está por confirmar en la documentación de RAWG. Si lo mencionas en el informe, hazlo como hipótesis. Los ceros (55 en df) quedan pendientes para el tratamiento.
+
+*anio*
+
+Rango de 1958 a 2026, con 155 NA en df1. Hay 4 lanzamientos posteriores a la fecha de extracción (16-ago-2025). Casi todo se concentra entre 1990 y 2025, con un máximo de \~500 juegos por año alrededor de 2016–2018 y una caída posterior. 2025 está incompleto. Solo el año es fiable: las 10 fechas más repetidas son 1 de enero de años entre 1990 y 2000 (17 a 34 juegos cada una), un relleno de la fuente.
+
+### Variables categoricas
+
+```{r}
+#| label: separar-valores
+separar_valores <- function(datos, col) {
+  datos |>
+    select(name, {{ col }}) |>
+    filter(!is.na({{ col }})) |>
+    separate_longer_delim({{ col }}, delim = ", ")
+}
+
+gen_largo <- separar_valores(df1, genres)
+pla_largo <- separar_valores(df1, platforms)
+dev_largo <- separar_valores(df1, developers)
+pub_largo <- separar_valores(df1, publishers)
+```
+
+#### Género
+
+```{r}
+#| label: genres-freq
+tab_gen <- freq(gen_largo, input = "genres")
+
+# El % de freq() es sobre menciones, no sobre juegos (un juego puede tener varios géneros)
+tab_gen |>
+  mutate(pct_juegos = round(100 * frequency / n_distinct(gen_largo$name), 1))
+```
+
+Hay 19 generos distintos y todos aparecen en al menos 59 juegos. Action está en el 44.7% de los juegos, Adventure en el 34.7%, Indie en el 26.2% y RPG en el 20.8%. Esos porcentajes son sobre juegos; el de freq() (20.29% para Action) es sobre menciones. Hay 8,612 juegos con género (366 NA). Lo más común son 2 géneros por juego (3,032), luego 1 (2,679) y 3 (1,801).
+
+#### Publishers, Plataformas y Desarrolladores
+
+```{r}
+#| label: multivalor-freq
+tab_pla <- freq(pla_largo, input = "platforms",  plot = FALSE)
+tab_dev <- freq(dev_largo, input = "developers", plot = FALSE)
+tab_pub <- freq(pub_largo, input = "publishers", plot = FALSE)
+
+head(tab_pla, 15)
+head(tab_dev, 15)
+head(tab_pub, 15)
+```
+
+```{r}
+#| label: plataformas-grafica
+# Gráfica de las 15 plataformas principales
+# (ojo: los porcentajes que dibuja son relativos a estas 15, no al total)
+pla_largo |>
+  filter(platforms %in% head(tab_pla$platforms, 15)) |>
+  freq(input = "platforms")
+```
+
+```{r}
+#| label: cardinalidad
+tibble(
+  variable          = c("genres", "platforms", "developers", "publishers"),
+  valores_distintos = c(nrow(tab_gen), nrow(tab_pla), nrow(tab_dev), nrow(tab_pub)),
+  con_un_solo_juego = c(sum(tab_gen$frequency == 1), sum(tab_pla$frequency == 1),
+                        sum(tab_dev$frequency == 1), sum(tab_pub$frequency == 1)),
+  con_30_o_mas      = c(sum(tab_gen$frequency >= 30), sum(tab_pla$frequency >= 30),
+                        sum(tab_dev$frequency >= 30), sum(tab_pub$frequency >= 30))
+)
+```
+
+```{r}
+#| label: multivalor-por-juego
+df1 |> count(n_generos = str_count(genres, ",") + 1)
+df1 |> count(n_plataformas = str_count(platforms, ",") + 1)
+```
+
+```{r}
+#| label: nombres-partidos
+# Separar por coma puede partir nombres como "Empresa, Inc."
+patron <- regex("^(inc|llc|ltd|co|corp|gmbh)\\.?$", ignore_case = TRUE)
+tab_dev |> filter(str_detect(developers, patron))
+tab_pub |> filter(str_detect(publishers, patron))
+```
+
+Plataformas: hay 51 distintas, 42 con al menos 30 juegos. PC está en 6,504 de 8,967 juegos (72.5%). Un juego puede tener hasta 22 plataformas. Desarrolladores: hay 5,296 distintos y 3,676 (69%) tienen un solo juego. Solo 34 llegan a 30 o más. Publishers: 3,343 distintos, 2,285 (68%) con un solo juego, y 55 con 30 o más. Nombres partidos por la coma: afecta solo a 4 filas (Co, Co., LLC, Co). Es poco, pero parecen fragmentos de nombres como “Empresa Co., Ltd.”.
 
 #### Variable temporal
-```{r}
-#| label: released-preparacion
-corte <- as_date(max(df1$updated))   # fecha de extracción aproximada
-
-eda_fechas <- df1 |>
-  mutate(
-    released_date = dmy(released),
-    anio = year(released_date),
-    antiguedad = as.numeric(corte - released_date) / 365.25  # negativa = aún no lanzado
-  )
-
-eda_fechas |>
-  summarise(
-    primera   = min(released_date, na.rm = TRUE),
-    ultima    = max(released_date, na.rm = TRUE),
-    n_na      = sum(is.na(released_date)),
-    n_futuros = sum(released_date > corte, na.rm = TRUE)
-  )
-```
 
 ```{r}
-#| label: released-por-anio
-eda_fechas |>
-  filter(!is.na(anio)) |>
-  count(anio) |>
-  ggplot(aes(anio, n)) +
-  geom_col(fill = "steelblue") +
-  labs(title = "Juegos por año de lanzamiento", x = "Año", y = "Juegos")
+#| label: updated-anio
+df1 |>
+  mutate(anio_update = factor(year(updated))) |>
+  freq(input = "anio_update")
 ```
 
-```{r}
-#| label: released-fechas-comodin
-eda_fechas |>
-  filter(!is.na(released_date)) |>
-  count(released_date, sort = TRUE) |>
-  head(10)
-```
-
-```{r}
-#| label: released-rating-por-anio
-# Años con suficientes juegos para comparar
-anios_ok <- eda_fechas |> count(anio) |> filter(n >= 30) |> pull(anio)
-
-eda_fechas |>
-  filter(anio %in% anios_ok) |>
-  ggplot(aes(factor(anio), rating)) +
-  geom_boxplot(fill = "steelblue", outlier.alpha = 0.3) +
-  labs(title = "Rating por año de lanzamiento",
-       x = "Año", y = "Rating") +
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5))
-
-# Correlación con la antigüedad (Spearman)
-cor(eda_fechas$antiguedad, eda_fechas$rating,
-    method = "spearman", use = "complete.obs")
-```
-
-```{r}
-#| label: released-na-vs-rating
-# ¿Los juegos sin fecha se parecen al resto en rating?
-eda_fechas |>
-  group_by(sin_fecha = is.na(released_date)) |>
-  summarise(n = n(),
-            rating_media = round(mean(rating), 2),
-            rating_mediana = median(rating))
-```
-
-```{r}
-#| label: released-na-detalle
-eda_fechas |>
-  filter(is.na(released_date)) |>
-  arrange(desc(rating)) |>
-  select(name, rating, suggestions_count, platforms) |>
-  head(15)
-```
-
-```{r}
-#| label: rating-bajo-por-decada
-eda_fechas |>
-  filter(!is.na(anio)) |>
-  mutate(decada = floor(anio / 10) * 10) |>
-  group_by(decada) |>
-  summarise(n = n(), pct_rating_bajo = round(100 * mean(rating < 3.6), 1)) |>
-  filter(n >= 30)
-```
-
-
-**Interpretación (3):**
-- Solo el año de released es fiable; en juegos antiguos, el mes y el día son un “1 de enero” de relleno.
-- Tiene relación no lineal y modesta con rating: más ratings altos en los noventa y principios de los 2000, y más ratings bajos en los 2010.
-- 155 juegos sin fecha (1.7%): ni todos sin lanzar ni todos completos. Hay que decidir su tratamiento.
-- 4 lanzamientos posteriores al corte de extracción.
-- La antigüedad no aporta información extra sobre **'anio'** (es una transformación lineal), así que para modelar se usaría solo año.
-
-#### 6. Variables categóricas multivalor
-genres, platforms, developers y publishers vienen con varios valores por celda. En el EDA los separamos de forma temporal para contar frecuencias: géneros más comunes, plataformas más comunes, cuántos géneros tiene un juego típico, cuántos developers distintos hay (probablemente muchos con un solo juego, lo que importa para decidir cómo codificarlos).
-
-#### 7. Relaciones con rating
-Rating por género, por plataforma, por año de lanzamiento y por cantidad de sugerencias. Es aquí donde se ve si las variables disponibles tienen señal predictiva o si el rating es casi puro ruido.
-
-#### 8. Variables de texto e imagen (description, image, name)
-Revisión rápida: porcentaje de descripciones vacías, idioma y longitud. Probablemente se descarten, pero conviene documentarlo.
-
-#### 9. Resumen de hallazgos
-Una lista corta de lo encontrado y las decisiones que se derivan: qué variables se eliminan, cuáles hay que transformar, cuántos faltantes tratar y cuál de las dos líneas objetivo es más viable. Esto es lo que te permite cerrar el EDA y definir el objetivo, como querías.
+El 61.2% de los registros es de 2025, el 18.5% de 2024 y el 13.6% de 2023. Hay 265 de 2019 contra 32 de 2020 y 25 de 2021, un bloque que no he podido explicar.
