@@ -699,7 +699,7 @@ sum(is.na(df5$anio))   # debe dar 0
 
 ------------------------------------------------------------------------
 
-## Alta cardinalidad: developers y publishers
+### Alta cardinalidad: developers y publishers
 
 **Decisión.** Hay 5,296 desarrolladores y 3,343 publishers, y cerca del 69 % aparece en un solo juego, así que una columna por empresa no es viable. En vez de eso, cada variable se resume en dos números por juego, calculados con todo el conjunto:
 
@@ -770,7 +770,7 @@ df6 |>
 
 ---
 
-## Agrupación de géneros, codificación de `era` y selección final
+### Agrupación de géneros, codificación de `era` y selección final
 
 **Decisión.** Los 19 géneros se agrupan en 4 grupos y `gen_indie` queda aparte, porque es el de mayor diferencia de rating en el paso 4 (−0.137). `n_generos` conserva el conteo completo. `era` pasa a dummies, tomando `antes_2000` como referencia. No se aplica escalado: en regresión lineal no cambia las predicciones, y si se necesita se hará en Modelado con la media y desviación de entrenamiento.
 
@@ -850,7 +850,7 @@ dim(df_modelo)
 
 ---
 
-## 9. Validación del tratamiento
+### Validación del tratamiento
 
 ```{r}
 sum(is.na(df_modelo))   # debe dar 0

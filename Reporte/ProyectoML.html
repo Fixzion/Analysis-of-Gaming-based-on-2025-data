@@ -3746,9 +3746,8 @@ mean in group FALSE  mean in group TRUE
 </ul>
 <hr>
 </section>
-</section>
-<section id="alta-cardinalidad-developers-y-publishers" class="level2">
-<h2 class="anchored" data-anchor-id="alta-cardinalidad-developers-y-publishers">Alta cardinalidad: developers y publishers</h2>
+<section id="alta-cardinalidad-developers-y-publishers" class="level3">
+<h3 class="anchored" data-anchor-id="alta-cardinalidad-developers-y-publishers">Alta cardinalidad: developers y publishers</h3>
 <p><strong>Decisión.</strong> Hay 5,296 desarrolladores y 3,343 publishers, y cerca del 69 % aparece en un solo juego, así que una columna por empresa no es viable. En vez de eso, cada variable se resume en dos números por juego, calculados con todo el conjunto:</p>
 <table class="caption-top table">
 <colgroup>
@@ -3855,8 +3854,8 @@ mean in group FALSE  mean in group TRUE
 </ul>
 <hr>
 </section>
-<section id="agrupación-de-géneros-codificación-de-era-y-selección-final" class="level2">
-<h2 class="anchored" data-anchor-id="agrupación-de-géneros-codificación-de-era-y-selección-final">Agrupación de géneros, codificación de <code>era</code> y selección final</h2>
+<section id="agrupación-de-géneros-codificación-de-era-y-selección-final" class="level3">
+<h3 class="anchored" data-anchor-id="agrupación-de-géneros-codificación-de-era-y-selección-final">Agrupación de géneros, codificación de <code>era</code> y selección final</h3>
 <p><strong>Decisión.</strong> Los 19 géneros se agrupan en 4 grupos y <code>gen_indie</code> queda aparte, porque es el de mayor diferencia de rating en el paso 4 (−0.137). <code>n_generos</code> conserva el conteo completo. <code>era</code> pasa a dummies, tomando <code>antes_2000</code> como referencia. No se aplica escalado: en regresión lineal no cambia las predicciones, y si se necesita se hará en Modelado con la media y desviación de entrenamiento.</p>
 <table class="caption-top table">
 <colgroup>
@@ -4016,8 +4015,8 @@ mean in group FALSE  mean in group TRUE
 </ul>
 <hr>
 </section>
-<section id="validación-del-tratamiento" class="level2">
-<h2 class="anchored" data-anchor-id="validación-del-tratamiento">9. Validación del tratamiento</h2>
+<section id="validación-del-tratamiento" class="level3">
+<h3 class="anchored" data-anchor-id="validación-del-tratamiento">Validación del tratamiento</h3>
 <div class="cell">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb138"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb138-1"><a href="#cb138-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sum</span>(<span class="fu">is.na</span>(df_modelo))   <span class="co"># debe dar 0</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
@@ -4154,6 +4153,7 @@ integer numeric
 <li>[Completar: 0 NA, sin columnas constantes y todas las variables numéricas. Verifica con <code>dim()</code> que las columnas de la bitácora coinciden con tus resultados.]</li>
 <li></li>
 </ul>
+</section>
 </section>
 </section>
 
