@@ -14,12 +14,38 @@ execute:
 ```{r}
 library(rpart)
 library(tidyverse)
+library(ggplot2)
 library(funModeling)
 library(janitor)
 library(here)
 ```
 
 # KDD
+
+## Diccionario de variables
+
+El conjunto de datos contiene 10,003 registros de videojuegos y 12 variables que traía el archivo CSV. Las URL de la variable `image` apuntan a `media.rawg.io`, por lo que los datos parecen provenir de la API de RAWG.
+
+| Variable | Tipo en R | Ejemplo | Descripción | Rol previsto |
+|---------------|---------------|---------------|---------------|---------------|
+| `id` | numérica | 58781 | Identificador único del juego en la fuente. | Identificador (se usa solo para detectar duplicados) |
+| `name` | texto | The Elder Scrolls VI | Título del videojuego. | Identificador |
+| `released` | texto (`dd-mm-yyyy`) | 20-02-2020 | Fecha de lanzamiento. Se convierte a fecha con `dmy()` y se usa únicamente el año, porque en juegos antiguos el día y el mes son un "1 de enero" de relleno. | Predictora |
+| `updated` | fecha-hora | 2025-06-12 15:08:44 | Fecha y hora de la última modificación del registro en la fuente. No describe al juego, sino al registro. | Metadato (se usa para elegir el registro más reciente entre duplicados) |
+| `rating` | numérica | 4.83 | Calificación promedio de los usuarios. Toma valores entre 3.29 y 5.00. El conjunto de datos no incluye el número de votos que respalda cada calificación. | Variable objetivo |
+| `suggestions_count` | numérica | 300 | Número de sugerencias asociadas al juego. Por confirmar en la documentación de RAWG: probablemente cuenta juegos similares sugeridos y no reseñas. | Predictora |
+| `platforms` | texto (lista separada por comas) | PC, Xbox Series S/X | Plataformas en las que el juego está disponible. | Predictora |
+| `developers` | texto (lista separada por comas) | Bethesda Game Studios | Estudios que desarrollaron el juego. | Predictora |
+| `genres` | texto (lista separada por comas) | Action, RPG | Géneros del juego. Un mismo juego puede tener varios. | Predictora |
+| `publishers` | texto (lista separada por comas) | Bethesda Softworks | Empresas que publicaron el juego. | Predictora |
+| `image` | texto (URL) | https://media.rawg.io/... | Enlace a una imagen del juego (captura o portada) alojada en la fuente. | Descartable |
+| `description` | texto libre | Currently in pre-production at... | Descripción textual del juego. | Descartable |
+
+**Notas (priorí) sobre la estructura de los datos**
+
+- `platforms`, `developers`, `genres` y `publishers` guardan varios valores en una sola celda, separados por coma y espacio. Para contar frecuencias hay que separarlos antes (ver la sección de variables categóricas).
+- `rating` es la variable que se intentará predecir, y las demás variables se evalúan como posibles predictoras. Esta asignación es provisional y se confirma al cierre del análisis exploratorio (EDA).
+- `image` y `description` no se analizan: la primera es un enlace y la segunda es texto libre cuyo análisis requeriría minería de texto, fuera del alcance del proyecto.
 
 ## ETL
 
@@ -50,13 +76,15 @@ head(df,5)
 ```
 
 ## Análisis exploratorio (EDA)
+
 ### Calidad de los datos
+
 ```{r}
 #| label: df_status
 df_status(df)
 ```
-**Unique** muestra un valor distinto en las variables id y name (9,978), compradas con el valor total que mostro la función str (10,003). Por lo tanto es correcto creer que existen observaciones duplicadas.
 
+**Unique** muestra un valor distinto en las variables id y name (9,978), compradas con el valor total que mostro la función str (10,003). Por lo tanto es correcto creer que existen observaciones duplicadas.
 
 ### Eliminación de duplicados y estado
 
@@ -75,18 +103,21 @@ str(df1)
 df_status(df1)
 ```
 
-- **Tamaño:** 10,003 filas. 
-- **Duplicados:** unique de id y de name son 8,978 filas, o sea 1,025 menos filas. (Ver str) 
-- **NA (q_na):** description 964, publishers 555, genres 404, developers 302, released 177, image 42, platforms 13. El resto en cero, incluido rating. 
-- **Ceros (q_zeros):** suggestions_count debería marcar 55 (0.55%) y rating, 0. 
-- **Tipos (type):** released aparece como texto y updated como fecha-hora. Esto justifica convertir released con dmy(). 
+- **Tamaño:** 10,003 filas.
+- **Duplicados:** unique de id y de name son 8,978 filas, o sea 1,025 menos filas. (Ver str)
+- **NA (q_na):** description 964, publishers 555, genres 404, developers 302, released 177, image 42, platforms 13. El resto en cero, incluido rating.
+- **Ceros (q_zeros):** suggestions_count debería marcar 55 (0.55%) y rating, 0.
+- **Tipos (type):** released aparece como texto y updated como fecha-hora. Esto justifica convertir released con dmy().
 - **Limitación:** df_status() solo cuenta NA reales. La revisión de cadenas vacías (ninguna) se hizo aparte y conviene mencionarla en una línea.
 
 ### Integridad
+
 ```{r}
 #| label: integridad
 data_integrity(df1)
 ```
+
+No hay variables de un solo valor (vars_one_value vacío), los NA coinciden con df_status, y las 8 variables de texto están marcadas como de cardinalidad alta (umbral de 35 únicos). En genres hay 676 combinaciones, pero solo 19 géneros reales.
 
 ### Variables numericas
 
@@ -112,17 +143,70 @@ profiling_num(df_num)
 map(df_num, \(x) tukey_outlier(x[!is.na(x)]))
 ```
 
-**Interpretación:** *rating (objetivo)*
+```{r}
+#| label: relaciones-pearson
+df_rel <- df1 |>
+  mutate(anio = year(dmy(released)), updated_num = as.numeric(updated)) |>
+  select(rating, suggestions_count, anio, updated_num)
 
-Media 3.91, mediana 3.93, desviación estándar 0.34, rango de 3.29 a 5.00 y mitad central entre 3.72 y 4.17. Asimetría de -0.18 con la fórmula manual. profiling_num() puede dar un valor ligeramente distinto. El histograma no es una campana: hay un bloque entre 3.3 y 3.5, un hueco casi vacío entre 3.5 y 3.68, un cuerpo principal hasta \~4.4 y una cola corta hacia 5. La causa del hueco sigue sin explicarse. Por IQR, los límites rondan 3.05 y 4.84, y solo hay 2 atípicos altos (5.00 y 4.86). Línea base para la regresión: predecir siempre la media da un RMSE de \~0.34.
+correlation_table(df_rel, target = "rating")
+```
 
-*suggestions_count*
+- **Las tres relaciones son muy débiles.** El valor más alto, 0.11, explica alrededor del 1% de la variación de rating (r² ≈ 0.012).
+- **El signo de anio es negativo:** los juegos más recientes tienden a tener ratings algo menores.
 
-Media 348, mediana 338, desviación estándar 182, de 0 a 1,729. Casi simétrica, con cola derecha moderada: no requiere transformación. Su significado exacto (probablemente juegos similares sugeridos en la fuente, no reseñas) está por confirmar en la documentación de RAWG. Si lo mencionas en el informe, hazlo como hipótesis. Los ceros (55 en df) quedan pendientes para el tratamiento.
+```{r}
+#| label: rating-boxplot
+ggplot(df1, aes(x = rating)) +
+  geom_boxplot(fill = "steelblue", outlier.color = "red") +
+  labs(title = "Boxplot de rating", x = "Rating") +
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
+```
 
-*anio*
+*Gráf. Boxplot:* Es univariado para la variable raiting y muestra 2 atípicos superiores.
 
-Rango de 1958 a 2026, con 155 NA en df1. Hay 4 lanzamientos posteriores a la fecha de extracción (16-ago-2025). Casi todo se concentra entre 1990 y 2025, con un máximo de \~500 juegos por año alrededor de 2016–2018 y una caída posterior. 2025 está incompleto. Solo el año es fiable: las 10 fechas más repetidas son 1 de enero de años entre 1990 y 2000 (17 a 34 juegos cada una), un relleno de la fuente.
+```{r}
+#| label: rating-vs-sugerencias
+ggplot(df_rel, aes(suggestions_count, rating)) +
+  geom_point(alpha = 0.2) +
+  labs(title = "Rating vs. suggestions_count", x = "Sugerencias", y = "Rating")
+```
+
+- Se esperaba encontrar una tendencia positiva, a mayor cantdidad des sugerencias mayor el rating.
+- Una sección (rango) en los datos es casi inexistente, desconosco el motivo. *Hipotesis:* dado que la grafica de disperción muestra claramente lineas horizontales y que los datos estaban organizados de forma decendiente desde un inicio, cabe suponer qué el dataset eso uno ya procesado. **¿Quiza un intento de incrementar el dataset?**
+
+```{r}
+#| label: updated-anio
+df1 |>
+  mutate(anio_update = factor(year(updated))) |>
+  freq(input = "anio_update")
+```
+
+*Gráf. Frecuencia 'updates':* El 61.2% de los registros es de 2025, el 18.5% de 2024 y el 13.6% de 2023. Hay 265 de 2019 contra 32 de 2020 y 25 de 2021, un bloque que no he podido explicar.
+
+```{r}
+#| label: rating-por-anio
+# Años con al menos 30 juegos (excluye los NA para que no aparezca una caja "NA")
+anios_ok <- df_rel |>
+  filter(!is.na(anio)) |>
+  count(anio) |>
+  filter(n >= 30) |>
+  pull(anio)
+
+df_rel |>
+  filter(anio %in% anios_ok) |>
+  ggplot(aes(factor(anio), rating)) +
+  geom_boxplot(fill = "steelblue", outlier.alpha = 0.3) +
+  labs(title = "Rating por año de lanzamiento (años con ≥30 juegos)",
+       x = "Año", y = "Rating") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5))
+```
+
+**Concluciones:** *rating (objetivo):* Media 3.91, mediana 3.93, desviación estándar 0.34, rango de 3.29 a 5.00 y mitad central entre 3.72 y 4.17. Asimetría de -0.18 con la fórmula manual. profiling_num() puede dar un valor ligeramente distinto. El histograma no es una campana: hay un bloque entre 3.3 y 3.5, un hueco casi vacío entre 3.5 y 3.68, un cuerpo principal hasta \~4.4 y una cola corta hacia 5. La causa del hueco sigue sin explicarse. Por IQR, los límites rondan 3.05 y 4.84, y solo hay 2 atípicos altos (5.00 y 4.86). Línea base para la regresión: predecir siempre la media da un RMSE de \~0.34.
+
+*suggestions_count:* El umbral de tukey_outlier() es 1,278, donde 3 juegos lo superan. La media es de 348, la mediana de 338 y la desviación estándar 182, de 0 a 1,729. Casi simétrica, con cola derecha moderada: no requiere transformación. Su significado exacto (probablemente juegos similares sugeridos en la fuente, no reseñas) está por confirmar en la documentación de RAWG. Si lo mencionas en el informe, hazlo como hipótesis. Los ceros (55 en df) quedan pendientes para el tratamiento.
+
+*anio:* Rango de 1958 a 2026, con 155 NA en df1. Hay 4 lanzamientos posteriores a la fecha de extracción (16-ago-2025). Casi todo se concentra entre 1990 y 2025, con un máximo de \~500 juegos por año alrededor de 2016–2018 y una caída posterior. 2025 está incompleto. Solo el año es fiable: las 10 fechas más repetidas son 1 de enero de años entre 1990 y 2000 (17 a 34 juegos cada una), un relleno de la fuente.
 
 ### Variables categoricas
 
@@ -154,7 +238,7 @@ tab_gen |>
 
 Hay 19 generos distintos y todos aparecen en al menos 59 juegos. Action está en el 44.7% de los juegos, Adventure en el 34.7%, Indie en el 26.2% y RPG en el 20.8%. Esos porcentajes son sobre juegos; el de freq() (20.29% para Action) es sobre menciones. Hay 8,612 juegos con género (366 NA). Lo más común son 2 géneros por juego (3,032), luego 1 (2,679) y 3 (1,801).
 
-#### Publishers, Plataformas y Desarrolladores
+#### 'platforms', 'developers' y 'publishers'
 
 ```{r}
 #| label: multivalor-freq
@@ -204,13 +288,374 @@ tab_pub |> filter(str_detect(publishers, patron))
 
 Plataformas: hay 51 distintas, 42 con al menos 30 juegos. PC está en 6,504 de 8,967 juegos (72.5%). Un juego puede tener hasta 22 plataformas. Desarrolladores: hay 5,296 distintos y 3,676 (69%) tienen un solo juego. Solo 34 llegan a 30 o más. Publishers: 3,343 distintos, 2,285 (68%) con un solo juego, y 55 con 30 o más. Nombres partidos por la coma: afecta solo a 4 filas (Co, Co., LLC, Co). Es poco, pero parecen fragmentos de nombres como “Empresa Co., Ltd.”.
 
-#### Variable temporal
+#### Variables no analizadas
+
+Variables que no se analizan. Una línea sobre name, image y description, que se descartan por ser identificador, URL y texto libre. **name:** Esta variable es util como un identificador, por lo que no aporta valor al análisis. **image:** Cada entrada de la variable (en su mayoria) contiene un URL para una imagen del juego. **description:** Un pequeño texto que suele describir el contenido del juego, ya sea historia, jugabilidad, etc.
+
+### Conclusiones (EDA)
+
+**Calidad de los datos.** El archivo original tiene 10,003 registros; al conservar el más reciente de cada `id` quedan 8,978 juegos únicos (1,025 duplicados eliminados). `rating` no tiene NA. Las variables con faltantes son `released` (155), `platforms` (11), `developers` (277), `genres` (366) y `publishers` (504), además de `image` y `description`, que no se usan. En total, 1,004 juegos (11.2 %) tienen al menos un NA en `anio`, `platforms`, `developers`, `genres` o `publishers`, y 135 carecen de `developers` y `publishers` a la vez. En una revisión preliminar, los juegos sin `developers` o sin `publishers` tienen un `rating` promedio más alto (≈ 4.05 y 4.03) que los que sí los tienen (≈ 3.90). Esto sugiere que la ausencia no es completamente aleatoria (MCAR), por lo que eliminar por lista todas las filas incompletas podría sesgar los resultados. Es preferible conservar los casos con indicadores de faltante.
+
+**Variable objetivo.** `rating` va de 3.29 a 5.00, con media 3.91, mediana 3.93 y desviación estándar 0.34. Su distribución no es una campana: hay un bloque entre 3.3 y 3.5, un hueco casi vacío entre 3.5 y 3.68 y una cola corta hacia 5. La causa del hueco no está explicada. Solo hay dos valores atípicos altos (5.00 y 4.86), que son legítimos. Predecir siempre la media da un RMSE ≈ 0.34, que será la línea base del modelo.
+
+**Variables numéricas.** Las relaciones con `rating` son muy débiles: `anio` (−0.11), `updated` (0.10) y `suggestions_count` (−0.05), de modo que ninguna explica más del 1 % de su variación. Los juegos más recientes tienden a tener ratings algo menores. `suggestions_count` es casi simétrica (media 348, mediana 338) y no requiere transformación; sus 50 ceros (0.56 %) son pocos. `anio` se concentra entre 1990 y 2025, con un máximo hacia 2016–2018; 2025 está incompleto, hay 4 lanzamientos posteriores a la extracción (16-ago-2025) y las fechas del 1 de enero son relleno de la fuente, por lo que solo el año es fiable.
+
+**Variables categóricas.** `genres`, `platforms`, `developers` y `publishers` guardan varios valores por celda. Hay 19 géneros reales (Action en 44.7 % de los juegos, Adventure 34.7 %, Indie 26.2 %, RPG 20.8 %) y 51 plataformas (PC en 72.5 %). En cambio, `developers` (5,296 distintos) y `publishers` (3,343) tienen cardinalidad muy alta: alrededor del 69 % aparece en un solo juego y solo 34 y 55 llegan a 30 o más.
+
+**Metadatos.** El 61.2 % de los registros se actualizó en 2025. Hay un bloque de 265 registros de 2019 frente a solo 32 de 2020 y 25 de 2021 que no se explica; una hipótesis es que el conjunto ya venía procesado o combinado de varias extracciones, pero no está confirmada. `updated` describe al registro y no al juego.
+
+**Decisiones para el tratamiento.** - Se confirma `rating` como variable objetivo (regresión). - `id`, `name`, `image` y `description` se descartan del modelo; `updated` se excluye como predictora. - `suggestions_count` se conserva con reserva: su significado está por confirmar y podría ser posterior al éxito del juego. - Las columnas multivalor se separan, los géneros y plataformas se codifican y `developers` y `publishers` se agrupan por frecuencia. - Los faltantes se tratan con indicadores y categoría "Unknown", y `anio` se imputa solo con entrenamiento.
+
+**Limitaciones.** El conjunto no incluye el número de votos detrás de cada `rating`, por lo que el objetivo es ruidoso. Con correlaciones individuales cercanas a 0.1, se espera que los modelos mejoren la línea base solo de forma modesta. No puede descartarse que los faltantes sean NMAR.
+
+## Transformación/Tratamiento de los datos
+
+### Diagnóstico de valores faltantes
 
 ```{r}
-#| label: updated-anio
-df1 |>
-  mutate(anio_update = factor(year(updated))) |>
-  freq(input = "anio_update")
+#| label: diag-na-prep
+vars_na <- c("anio", "platforms", "developers", "genres", "publishers")
+
+df_na <- df1 |>
+  mutate(anio = year(dmy(released)), updated_num = as.numeric(updated)) |>
+  select(all_of(vars_na), rating, suggestions_count, updated_num)
 ```
 
-El 61.2% de los registros es de 2025, el 18.5% de 2024 y el 13.6% de 2023. Hay 265 de 2019 contra 32 de 2020 y 25 de 2021, un bloque que no he podido explicar.
+```{r}
+#| label: diag-na-resumen
+resumen_na <- df_na |>
+  summarise(across(all_of(vars_na), \(x) sum(is.na(x)))) |>
+  pivot_longer(everything(), names_to = "variable", values_to = "q_na") |>
+  mutate(p_na = round(100 * q_na / nrow(df_na), 2)) |>
+  arrange(desc(q_na))
+
+resumen_na
+
+# Filas con al menos un NA en estas cinco variables
+df_na |>
+  mutate(alguno = if_any(all_of(vars_na), is.na)) |>
+  summarise(filas_con_na = sum(alguno),
+            p_filas_con_na = round(100 * mean(alguno), 2))
+```
+
+```{r}
+#| label: diag-na-barras
+ggplot(resumen_na, aes(reorder(variable, -q_na), q_na)) +
+  geom_col(fill = "steelblue") +
+  geom_text(aes(label = paste0(q_na, " (", p_na, " %)")), vjust = -0.3) +
+  labs(title = "Valores faltantes por variable",
+       x = NULL, y = "Número de NA") +
+  expand_limits(y = max(resumen_na$q_na) * 1.1)
+```
+
+**Gráf. Barras - Distrubución de faltantes:** publishers es la variable con más faltantes *(5.61 %)*, seguida de genres *(4.08 %)*, developers *(3.09 %)*, anio *(1.73 %)* y platforms *(0.12 %)*. Ninguna variable supera el 6 %, *pero al combinarlas 1,004 juegos (11.18 %) tienen al menos un NA*, por lo que eliminarlos todos por lista costaría más de una décima parte de la muestra.
+
+```{r}
+#| label: diag-na-patrones
+faltantes <- df_na |>
+  mutate(across(all_of(vars_na), is.na)) |>
+  count(across(all_of(vars_na)), name = "n") |>
+  arrange(desc(n)) |>
+  mutate(patron = row_number(),
+         n_na = rowSums(across(all_of(vars_na))))
+
+faltantes
+```
+
+**Interpretación:** Hay 7,974 juegos completos (88.8 %) y 1,313 celdas faltantes en total. La mayoría de los juegos incompletos falla en una sola variable (709 de 1,004): publishers sola (253), genres sola (230), anio sola (120) y developers sola (101). Solo 14 juegos tienen tres variables faltantes. El patrón conjunto más grande es developers y publishers (123 juegos solo con esas dos; 135 contando los que además carecen de otra variable), seguido de genres con publishers (88). Los faltantes están dispersos en varios patrones pequeños y no se concentran en un solo grupo de filas.
+
+#### Matriz sombra
+
+```{r}
+#| label: diag-na-sombra
+sombra <- df_na |>
+  transmute(across(all_of(vars_na), \(x) as.integer(is.na(x))))
+
+round(cor(sombra), 2)
+```
+
+```{r}
+#| label: diag-na-sombra-grafico
+cor(sombra) |>
+  as.data.frame() |>
+  rownames_to_column("var1") |>
+  pivot_longer(-var1, names_to = "var2", values_to = "r") |>
+  ggplot(aes(var1, var2, fill = r)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = round(r, 2))) +
+  scale_fill_gradient2(low = "steelblue", mid = "white", high = "firebrick",
+                       limits = c(-1, 1), name = "r") +
+  labs(title = "Correlación entre indicadores de faltante", x = NULL, y = NULL)
+```
+
+**Interpretación (sombra):** La correlación más alta es entre developers y publishers (r = 0.33): tienden a faltar juntos, aunque de forma moderada. Le siguen genres con publishers (0.17) y genres con developers (0.10). El resto es prácticamente cero (platforms casi no se relaciona con nada).
+
+
+### Limpieza (reglas)
+
+**Decisiones:**
+
+| Regla | Justificación |
+|------------------------------------|------------------------------------|
+| Convertir `released` a `anio` con `dmy()` | Solo el año es fiable (hay muchas fechas de relleno "1 de enero") |
+| Eliminar juegos con `anio` pre-lanzamientos | Son pre-lanzamientos; su rating no es comparable |
+| Eliminar filas sin `platforms` (11 filas) | 0.12 %: pérdida despreciable |
+| Normalizar texto y descartar fragmentos "Co", "Co.", "LLC" | Residuos de separar por coma |
+
+```{r}
+#| label: limpieza-reglas
+fecha_extraccion <- as.Date("2025-08-16")
+
+df2 <- df1 |>
+  mutate(fecha = dmy(released),
+         anio  = year(fecha),
+         across(c(platforms, developers, genres, publishers), str_squish)) |>
+  filter(is.na(fecha) | fecha <= fecha_extraccion,  # sin pre-lanzamientos
+         !is.na(platforms))                         # sin filas sin plataforma
+```
+
+```{r}
+#| label: limpieza-verificacion
+# Filas antes y después
+tibble(conjunto = c("df1", "df2"), filas = c(nrow(df1), nrow(df2)))
+
+# Pre-lanzamientos eliminados
+df1 |>
+  filter(dmy(released) > fecha_extraccion) |>
+  select(name, released, rating)
+
+# NA restantes y efecto sobre el objetivo
+df2 |>
+  summarise(across(c(anio, platforms, developers, genres, publishers),
+                   \(x) sum(is.na(x))))
+df2 |> summarise(media = mean(rating), sd = sd(rating))
+```
+
+**Interpretación:** 
+- Pasa de 8,978 a 8,963 filas, 4 pre-lanzamientos y 11 juegos sin plataforma. 
+- Después de la limpieza quedan 155 NA en anio, 272 en developers, 366 en genres y 498 en publishers (platforms queda sin NA); 993 juegos (11.08 %) conservan al menos un NA. 
+- El rating no cambia (media 3.91, desviación 0.34), así que las eliminaciones no alteraron la variable objetivo.
+- No hay nombres que difieran solo por mayúsculas en ninguna de las cuatro columnas, por lo que no es necesario pasar el texto a minúsculas.
+
+### Selección de columnas
+
+|Variable	| Decisión	| Motivo|
+|------------------|-----------------|------------------------------------------|
+|id |	Conservar como llave |	Permite volver a df1; no es predictora|
+|rating |	Variable objetivo	| No se imputa ni se transforma|
+|anio, suggestions_count	| Predictoras numéricas	| anio reemplaza a released|
+|platforms, developers, genres, publishers	| Predictoras categóricas	| Con varios valores por celda|
+|name	| Descartar	| Identificador; se recupera con id|
+|released, fecha |	Descartar	Sustituidas por anio|
+|updated |	Descartar	| Es metadato del registro, no del juego: su correlación con rating es baja (0.10)|
+|image, description |	Descartar	| URL y texto libre; el análisis de texto queda fuera del alcance|
+
+
+```{r}
+#| label: seleccion-columnas
+df3 <- df2 |>
+  select(id, rating, anio, suggestions_count,
+         platforms, developers, genres, publishers)
+
+glimpse(df3)
+```
+
+### 4. Ingeniería de características
+
+**Objetivo.** Convertir columnas con varios valores por celda y fechas en predictores útiles, sin aprender nada del conjunto.
+
+**Características propuestas:**
+
+- **Género:** one-hot de los 19 géneros y `n_generos`.
+- **Plataformas:** familias (PlayStation, Xbox, Nintendo, PC, móvil, otras), `n_plataformas`, `solo_pc`, `multiplataforma`.
+- **Tiempo:** `edad_juego = 2025 - anio` y `era` por décadas.
+- **Empresas:** `autopublicado` (developer = publisher) y tabla de equivalencias para familias evidentes (Ubisoft / Ubisoft Montreal, Electronic Arts / Electronic Arts Canada, Sony Computer / Sony Interactive Entertainment).
+
+```{r}
+#| label: fe-generos
+# separate_longer_delim() + pivot_wider() o equivalente para one-hot
+```
+
+```{r}
+#| label: fe-plataformas
+# Tabla de equivalencias plataforma -> familia; n_plataformas; solo_pc; multiplataforma
+```
+
+```{r}
+#| label: fe-tiempo-empresas
+# edad_juego, era, autopublicado, unificación de nombres de empresas
+```
+
+**Interpretación:**
+
+> *(¿Cuántas columnas se crearon? ¿Alguna característica muestra relación visible con `rating`?)*
+
+------------------------------------------------------------------------
+
+### 5. Tratamiento de faltantes (reglas e indicadores)
+
+**Decisiones por variable:**
+
+| Variable | NA | Tratamiento |
+|------------------------|------------------------|------------------------|
+| `publishers` / `developers` | 5.6 % / 3.1 % | Si falta uno y el otro existe, copiarlo (verificar antes la tasa de coincidencia en casos completos); el resto como `"Unknown"` |
+| `genres` | 4.1 % | One-hot en 0 más indicador `genero_na` |
+| `anio` | 1.7 % | Indicador `anio_na` ahora; imputación en el paso 7 |
+| `suggestions_count` = 0 | 50 filas | Mantener como cero real si no hay patrón (ver paso 1) |
+
+No se aplica eliminación por lista general: la unión de los NA categóricos se acerca al 10 % de las filas y podría sesgar si la ausencia se relaciona con `rating`.
+
+```{r}
+#| label: na-regla-dev-pub
+# Tasa de coincidencia developer == publisher en casos completos
+# Copiar uno al otro cuando falte
+```
+
+```{r}
+#| label: na-indicadores
+# genero_na, anio_na, developer_unknown, publisher_unknown
+```
+
+**Interpretación:**
+
+> *(¿Qué proporción de NA se recuperó con la regla? ¿Cuántos quedaron como "Unknown"?)*
+
+------------------------------------------------------------------------
+
+### 6. Partición entrenamiento / prueba
+
+**Decisión.** 80/20, con semilla fija y estratificada por rangos de `rating`. A partir de aquí, todo ajuste usa solo entrenamiento.
+
+```{r}
+#| label: particion
+# set.seed(...)
+# estratos: cut(rating, quantile(...))
+# train / test
+```
+
+**Interpretación:**
+
+> *(Verifica que la distribución de `rating` sea similar en ambos conjuntos.)*
+
+------------------------------------------------------------------------
+
+### 7. Imputación de `anio` (solo con entrenamiento)
+
+**Decisión.** Con más de 500 casos, `missForest` es adecuado (kNN se reserva para conjuntos pequeños). Se compara con una línea base simple (mediana + indicador) para justificar la elección. `rating` nunca se imputa.
+
+```{r}
+#| label: imputacion-base
+# Mediana de anio en train (línea base)
+```
+
+```{r}
+#| label: imputacion-missforest
+# set.seed(1234)
+# missForest() sobre train con las variables ya construidas
+# aplicar el modelo de imputación a test
+```
+
+```{r}
+#| label: imputacion-comparacion
+# Densidad de anio antes y después de imputar
+```
+
+**Interpretación:**
+
+> *(¿Cambió la distribución de `anio`? ¿Difieren los dos métodos?)*
+
+------------------------------------------------------------------------
+
+### 8. Alta cardinalidad: `developers` y `publishers` (solo con entrenamiento)
+
+**Decisión.** Hay 5,296 desarrolladores (69 % con un solo juego) y 3,343 publishers. Se conservan los que tienen ≥ 30 juegos en entrenamiento y el resto pasa a `"Other"`. También se calculan `n_juegos_dev` y `n_juegos_pub` con entrenamiento.
+
+```{r}
+#| label: cardinalidad-lump
+# Frecuencias en train; umbral >= 30; "Other" para el resto
+```
+
+```{r}
+#| label: cardinalidad-conteos
+# n_juegos_dev, n_juegos_pub (calculados en train)
+```
+
+**Interpretación:**
+
+> *(¿Cuántos niveles quedaron? ¿Qué porcentaje de juegos cae en "Other"?)*
+
+------------------------------------------------------------------------
+
+### 9. Codificación y escalado
+
+**Decisión.** Variables categóricas finales a dummies. El escalado depende del modelo:
+
+- `rpart`: no necesita escalado.
+- Regresión regularizada, kNN o redes: estandarizar `suggestions_count`, `edad_juego` y los conteos, con media y desviación de entrenamiento.
+
+```{r}
+#| label: codificacion
+```
+
+```{r}
+#| label: escalado
+# Solo si el modelo lo requiere; aplicar a test los parámetros de train
+```
+
+**Interpretación:**
+
+> *(Dimensiones finales de la matriz de entrenamiento y prueba.)*
+
+------------------------------------------------------------------------
+
+### 10. Validación del tratamiento y bitácora
+
+```{r}
+#| label: validacion
+# sum(is.na(...)) por conjunto; dim(); comparación de columnas train vs test
+# df_status() final
+```
+
+**Bitácora de decisiones:**
+
+| Paso | Acción | Filas antes | Filas después | Columnas |
+|----|----|----|----|----|
+| 2 | Limpieza | 8,978 |  |  |
+| 3 | Selección |  |  |  |
+| 4 | Características |  |  |  |
+| 5 | Faltantes |  |  |  |
+| 6 | Partición |  | train: / test: |  |
+| 7–9 | Imputación, cardinalidad, codificación |  |  |  |
+
+**Interpretación:**
+
+> *(No deben quedar NA y train y test deben tener las mismas columnas.)*
+
+------------------------------------------------------------------------
+
+### 11. Efecto de las transformaciones (opcional)
+
+Validación cruzada con `rpart` comparando RMSE entre bloques, contra la línea base de \~0.34:
+
+| Conjunto de predictores    | RMSE (CV) |
+|----------------------------|-----------|
+| Solo numéricas originales  |           |
+| \+ géneros y plataformas   |           |
+| \+ edad y era              |           |
+| \+ conteos y autopublicado |           |
+
+```{r}
+#| label: efecto-transformaciones
+```
+
+**Interpretación:**
+
+> *(Con correlaciones individuales de \~0.1, se espera una mejora modesta sobre la línea base.)*
+
+------------------------------------------------------------------------
+
+### Limitaciones del tratamiento
+
+- El conjunto no incluye el número de votos detrás de cada `rating`, por lo que el objetivo es ruidoso.
+- El significado de `suggestions_count` está por confirmar y podría ser posterior al éxito del juego (riesgo de fuga).
+- No se puede descartar que los faltantes sean NMAR.
