@@ -2869,10 +2869,9 @@ bottom_threshold    top_threshold
 </div>
 <div class="cell">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb40"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Gráfica de las 15 plataformas principales</span></span>
-<span id="cb40-2"><a href="#cb40-2" aria-hidden="true" tabindex="-1"></a><span class="co"># (ojo: los porcentajes que dibuja son relativos a estas 15, no al total)</span></span>
-<span id="cb40-3"><a href="#cb40-3" aria-hidden="true" tabindex="-1"></a>pla_largo <span class="sc">|&gt;</span></span>
-<span id="cb40-4"><a href="#cb40-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(platforms <span class="sc">%in%</span> <span class="fu">head</span>(tab_pla<span class="sc">$</span>platforms, <span class="dv">15</span>)) <span class="sc">|&gt;</span></span>
-<span id="cb40-5"><a href="#cb40-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">freq</span>(<span class="at">input =</span> <span class="st">&quot;platforms&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb40-2"><a href="#cb40-2" aria-hidden="true" tabindex="-1"></a>pla_largo <span class="sc">|&gt;</span></span>
+<span id="cb40-3"><a href="#cb40-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(platforms <span class="sc">%in%</span> <span class="fu">head</span>(tab_pla<span class="sc">$</span>platforms, <span class="dv">15</span>)) <span class="sc">|&gt;</span></span>
+<span id="cb40-4"><a href="#cb40-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">freq</span>(<span class="at">input =</span> <span class="st">&quot;platforms&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <div>
 <figure class="figure">
@@ -2992,7 +2991,7 @@ bottom_threshold    top_threshold
 <p><strong>Variables categóricas.</strong> <code>genres</code>, <code>platforms</code>, <code>developers</code> y <code>publishers</code> guardan varios valores por celda. Hay 19 géneros reales (Action en 44.7 % de los juegos, Adventure 34.7 %, Indie 26.2 %, RPG 20.8 %) y 51 plataformas (PC en 72.5 %). En cambio, <code>developers</code> (5,296 distintos) y <code>publishers</code> (3,343) tienen cardinalidad muy alta: alrededor del 69 % aparece en un solo juego y solo 34 y 55 llegan a 30 o más.</p>
 <p><strong>Metadatos.</strong> El 61.2 % de los registros se actualizó en 2025. Hay un bloque de 265 registros de 2019 frente a solo 32 de 2020 y 25 de 2021 que no se explica; una hipótesis es que el conjunto ya venía procesado o combinado de varias extracciones, pero no está confirmada. <code>updated</code> describe al registro y no al juego.</p>
 <p><strong>Decisiones para el tratamiento.</strong> - Se confirma <code>rating</code> como variable objetivo (regresión). - <code>id</code>, <code>name</code>, <code>image</code> y <code>description</code> se descartan del modelo; <code>updated</code> se excluye como predictora. - <code>suggestions_count</code> se conserva con reserva: su significado está por confirmar y podría ser posterior al éxito del juego. - Las columnas multivalor se separan, los géneros y plataformas se codifican y <code>developers</code> y <code>publishers</code> se agrupan por frecuencia. - Los faltantes se tratan con indicadores y categoría “Unknown”, y <code>anio</code> se imputa solo con entrenamiento.</p>
-<p><strong>Limitaciones.</strong> El conjunto no incluye el número de votos detrás de cada <code>rating</code>, por lo que el objetivo es ruidoso. Con correlaciones individuales cercanas a 0.1, se espera que los modelos mejoren la línea base solo de forma modesta. No puede descartarse que los faltantes sean NMAR.</p>
+<hr>
 </section>
 </section>
 <section id="transformacióntratamiento-de-los-datos" class="level2">
@@ -3122,8 +3121,8 @@ publishers  0.09      0.07       0.33   0.17       1.00</code></pre>
 <p><strong>Interpretación (sombra):</strong> La correlación más alta es entre developers y publishers (r = 0.33): tienden a faltar juntos, aunque de forma moderada. Le siguen genres con publishers (0.17) y genres con developers (0.10). El resto es prácticamente cero (platforms casi no se relaciona con nada).</p>
 </section>
 </section>
-<section id="limpieza-reglas" class="level3">
-<h3 class="anchored" data-anchor-id="limpieza-reglas">Limpieza (reglas)</h3>
+<section id="limpieza" class="level3">
+<h3 class="anchored" data-anchor-id="limpieza">Limpieza —</h3>
 <p><strong>Decisiones:</strong></p>
 <table class="caption-top table">
 <colgroup>
@@ -3206,7 +3205,13 @@ publishers  0.09      0.07       0.33   0.17       1.00</code></pre>
 1  3.91 0.340</code></pre>
 </div>
 </div>
-<p><strong>Interpretación:</strong> - Pasa de 8,978 a 8,963 filas, 4 pre-lanzamientos y 11 juegos sin plataforma. - Después de la limpieza quedan 155 NA en anio, 272 en developers, 366 en genres y 498 en publishers (platforms queda sin NA); 993 juegos (11.08 %) conservan al menos un NA. - El rating no cambia (media 3.91, desviación 0.34), así que las eliminaciones no alteraron la variable objetivo. - No hay nombres que difieran solo por mayúsculas en ninguna de las cuatro columnas, por lo que no es necesario pasar el texto a minúsculas.</p>
+<p><strong>Interpretación:</strong></p>
+<ul>
+<li>Pasa de 8,978 a 8,963 filas, 4 pre-lanzamientos y 11 juegos sin plataforma.</li>
+<li>Después de la limpieza quedan 155 NA en anio, 272 en developers, 366 en genres y 498 en publishers (platforms queda sin NA); 993 juegos (11.08 %) conservan al menos un NA.</li>
+<li>El rating no cambia (media 3.91, desviación 0.34), así que las eliminaciones no alteraron la variable objetivo.</li>
+<li>No hay nombres que difieran solo por mayúsculas en ninguna de las cuatro columnas, por lo que no es necesario pasar el texto a minúsculas.</li>
+</ul>
 </section>
 <section id="selección-de-columnas" class="level3">
 <h3 class="anchored" data-anchor-id="selección-de-columnas">Selección de columnas</h3>
@@ -3287,33 +3292,651 @@ $ publishers        &lt;chr&gt; &quot;Mihiraghi&quot;, &quot;Bethesda Softworks&
 </div>
 </section>
 <section id="ingeniería-de-características" class="level3">
-<h3 class="anchored" data-anchor-id="ingeniería-de-características">4. Ingeniería de características</h3>
-<p><strong>Objetivo.</strong> Convertir columnas con varios valores por celda y fechas en predictores útiles, sin aprender nada del conjunto.</p>
-<p><strong>Características propuestas:</strong></p>
-<ul>
-<li><strong>Género:</strong> one-hot de los 19 géneros y <code>n_generos</code>.</li>
-<li><strong>Plataformas:</strong> familias (PlayStation, Xbox, Nintendo, PC, móvil, otras), <code>n_plataformas</code>, <code>solo_pc</code>, <code>multiplataforma</code>.</li>
-<li><strong>Tiempo:</strong> <code>edad_juego = 2025 - anio</code> y <code>era</code> por décadas.</li>
-<li><strong>Empresas:</strong> <code>autopublicado</code> (developer = publisher) y tabla de equivalencias para familias evidentes (Ubisoft / Ubisoft Montreal, Electronic Arts / Electronic Arts Canada, Sony Computer / Sony Interactive Entertainment).</li>
-</ul>
+<h3 class="anchored" data-anchor-id="ingeniería-de-características">Ingeniería de características</h3>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 14%">
+<col style="width: 29%">
+<col style="width: 55%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Bloque</th>
+<th>Características</th>
+<th>Cómo se construye</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Género</td>
+<td>gen_* (19 columnas 0/1), n_generos</td>
+<td>Se separan los géneros de cada celda</td>
+</tr>
+<tr class="even">
+<td>Plataformas</td>
+<td>pf_* (7 familias 0/1), n_plataformas, n_familias, solo_pc, multiplataforma</td>
+<td>Cada plataforma se asigna a una familia</td>
+</tr>
+<tr class="odd">
+<td>Tiempo</td>
+<td>edad_juego, era</td>
+<td>A partir de anio</td>
+</tr>
+<tr class="even">
+<td>Empresas</td>
+<td>autopublicado</td>
+<td>Compara developers con publishers</td>
+</tr>
+</tbody>
+</table>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb74"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb74-1"><a href="#cb74-1" aria-hidden="true" tabindex="-1"></a><span class="co"># separate_longer_delim() + pivot_wider() o equivalente para one-hot</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb74"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb74-1"><a href="#cb74-1" aria-hidden="true" tabindex="-1"></a>gen_feat <span class="ot">&lt;-</span> df3 <span class="sc">|&gt;</span></span>
+<span id="cb74-2"><a href="#cb74-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(id, genres) <span class="sc">|&gt;</span></span>
+<span id="cb74-3"><a href="#cb74-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(genres)) <span class="sc">|&gt;</span></span>
+<span id="cb74-4"><a href="#cb74-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">n_generos =</span> <span class="fu">str_count</span>(genres, <span class="st">&quot;,&quot;</span>) <span class="sc">+</span> <span class="dv">1</span>L) <span class="sc">|&gt;</span></span>
+<span id="cb74-5"><a href="#cb74-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">separate_longer_delim</span>(genres, <span class="at">delim =</span> <span class="st">&quot;, &quot;</span>) <span class="sc">|&gt;</span></span>
+<span id="cb74-6"><a href="#cb74-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">distinct</span>(id, n_generos, genres) <span class="sc">|&gt;</span></span>
+<span id="cb74-7"><a href="#cb74-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">valor =</span> <span class="dv">1</span>L) <span class="sc">|&gt;</span></span>
+<span id="cb74-8"><a href="#cb74-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">pivot_wider</span>(<span class="at">names_from =</span> genres, <span class="at">values_from =</span> valor,</span>
+<span id="cb74-9"><a href="#cb74-9" aria-hidden="true" tabindex="-1"></a>              <span class="at">values_fill =</span> <span class="dv">0</span>L, <span class="at">names_prefix =</span> <span class="st">&quot;gen_&quot;</span>) <span class="sc">|&gt;</span></span>
+<span id="cb74-10"><a href="#cb74-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">clean_names</span>()</span>
+<span id="cb74-11"><a href="#cb74-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb74-12"><a href="#cb74-12" aria-hidden="true" tabindex="-1"></a>gen_feat</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 8,597 × 21
+       id n_generos gen_rpg gen_indie gen_action gen_arcade gen_casual
+    &lt;dbl&gt;     &lt;int&gt;   &lt;int&gt;     &lt;int&gt;      &lt;int&gt;      &lt;int&gt;      &lt;int&gt;
+ 1 428090         2       1         1          0          0          0
+ 2  58781         2       1         0          1          0          0
+ 3 964507         3       0         1          0          1          1
+ 4 830060         4       0         1          1          0          0
+ 5 484878         2       0         0          0          0          1
+ 6  53594         2       0         0          1          0          0
+ 7  43252         1       1         0          0          0          0
+ 8 257255         2       1         0          0          0          0
+ 9  43050         1       1         0          0          0          0
+10 816336         1       0         0          0          0          1
+# ℹ 8,587 more rows
+# ℹ 14 more variables: gen_adventure &lt;int&gt;, gen_platformer &lt;int&gt;,
+#   gen_strategy &lt;int&gt;, gen_shooter &lt;int&gt;, gen_fighting &lt;int&gt;,
+#   gen_simulation &lt;int&gt;, gen_massively_multiplayer &lt;int&gt;, gen_puzzle &lt;int&gt;,
+#   gen_racing &lt;int&gt;, gen_sports &lt;int&gt;, gen_educational &lt;int&gt;,
+#   gen_family &lt;int&gt;, gen_card &lt;int&gt;, gen_board_games &lt;int&gt;</code></pre>
+</div>
 </div>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb75"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb75-1"><a href="#cb75-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Tabla de equivalencias plataforma -&gt; familia; n_plataformas; solo_pc; multiplataforma</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb76"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb76-1"><a href="#cb76-1" aria-hidden="true" tabindex="-1"></a>pla_larga <span class="ot">&lt;-</span> df3 <span class="sc">|&gt;</span></span>
+<span id="cb76-2"><a href="#cb76-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(id, platforms) <span class="sc">|&gt;</span></span>
+<span id="cb76-3"><a href="#cb76-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">separate_longer_delim</span>(platforms, <span class="at">delim =</span> <span class="st">&quot;, &quot;</span>) <span class="sc">|&gt;</span></span>
+<span id="cb76-4"><a href="#cb76-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">familia =</span> <span class="fu">case_when</span>(</span>
+<span id="cb76-5"><a href="#cb76-5" aria-hidden="true" tabindex="-1"></a>    <span class="fu">str_detect</span>(platforms, <span class="st">&quot;^(PlayStation|PS Vita|PSP)&quot;</span>)         <span class="sc">~</span> <span class="st">&quot;playstation&quot;</span>,</span>
+<span id="cb76-6"><a href="#cb76-6" aria-hidden="true" tabindex="-1"></a>    <span class="fu">str_detect</span>(platforms, <span class="st">&quot;^Xbox&quot;</span>)                               <span class="sc">~</span> <span class="st">&quot;xbox&quot;</span>,</span>
+<span id="cb76-7"><a href="#cb76-7" aria-hidden="true" tabindex="-1"></a>    <span class="fu">str_detect</span>(platforms, <span class="st">&quot;Nintendo|Wii|GameCube|Game Boy|NES&quot;</span>)  <span class="sc">~</span> <span class="st">&quot;nintendo&quot;</span>,</span>
+<span id="cb76-8"><a href="#cb76-8" aria-hidden="true" tabindex="-1"></a>    platforms <span class="sc">%in%</span> <span class="fu">c</span>(<span class="st">&quot;PC&quot;</span>, <span class="st">&quot;macOS&quot;</span>, <span class="st">&quot;Linux&quot;</span>)                     <span class="sc">~</span> <span class="st">&quot;pc&quot;</span>,</span>
+<span id="cb76-9"><a href="#cb76-9" aria-hidden="true" tabindex="-1"></a>    platforms <span class="sc">%in%</span> <span class="fu">c</span>(<span class="st">&quot;iOS&quot;</span>, <span class="st">&quot;Android&quot;</span>)                           <span class="sc">~</span> <span class="st">&quot;movil&quot;</span>,</span>
+<span id="cb76-10"><a href="#cb76-10" aria-hidden="true" tabindex="-1"></a>    <span class="fu">str_detect</span>(platforms, <span class="st">&quot;SEGA|Genesis|Dreamcast|Game Gear&quot;</span>)    <span class="sc">~</span> <span class="st">&quot;sega&quot;</span>,</span>
+<span id="cb76-11"><a href="#cb76-11" aria-hidden="true" tabindex="-1"></a>    <span class="cn">TRUE</span>                                                         <span class="sc">~</span> <span class="st">&quot;otras&quot;</span>))</span>
+<span id="cb76-12"><a href="#cb76-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb76-13"><a href="#cb76-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Revisión de la asignación (51 filas)</span></span>
+<span id="cb76-14"><a href="#cb76-14" aria-hidden="true" tabindex="-1"></a>pla_larga <span class="sc">|&gt;</span> <span class="fu">distinct</span>(platforms, familia) <span class="sc">|&gt;</span> <span class="fu">arrange</span>(familia, platforms)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 51 × 2
+   platforms        familia 
+   &lt;chr&gt;            &lt;chr&gt;   
+ 1 Android          movil   
+ 2 iOS              movil   
+ 3 Game Boy         nintendo
+ 4 Game Boy Advance nintendo
+ 5 Game Boy Color   nintendo
+ 6 GameCube         nintendo
+ 7 NES              nintendo
+ 8 Nintendo 3DS     nintendo
+ 9 Nintendo 64      nintendo
+10 Nintendo DS      nintendo
+# ℹ 41 more rows</code></pre>
+</div>
 </div>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb76"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb76-1"><a href="#cb76-1" aria-hidden="true" tabindex="-1"></a><span class="co"># edad_juego, era, autopublicado, unificación de nombres de empresas</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb78"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb78-1"><a href="#cb78-1" aria-hidden="true" tabindex="-1"></a>pla_n <span class="ot">&lt;-</span> pla_larga <span class="sc">|&gt;</span> <span class="fu">count</span>(id, <span class="at">name =</span> <span class="st">&quot;n_plataformas&quot;</span>)</span>
+<span id="cb78-2"><a href="#cb78-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb78-3"><a href="#cb78-3" aria-hidden="true" tabindex="-1"></a>pla_fam <span class="ot">&lt;-</span> pla_larga <span class="sc">|&gt;</span></span>
+<span id="cb78-4"><a href="#cb78-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">distinct</span>(id, familia) <span class="sc">|&gt;</span></span>
+<span id="cb78-5"><a href="#cb78-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">valor =</span> <span class="dv">1</span>L) <span class="sc">|&gt;</span></span>
+<span id="cb78-6"><a href="#cb78-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">pivot_wider</span>(<span class="at">names_from =</span> familia, <span class="at">values_from =</span> valor,</span>
+<span id="cb78-7"><a href="#cb78-7" aria-hidden="true" tabindex="-1"></a>              <span class="at">values_fill =</span> <span class="dv">0</span>L, <span class="at">names_prefix =</span> <span class="st">&quot;pf_&quot;</span>)</span>
+<span id="cb78-8"><a href="#cb78-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb78-9"><a href="#cb78-9" aria-hidden="true" tabindex="-1"></a>pla_feat <span class="ot">&lt;-</span> pla_n <span class="sc">|&gt;</span></span>
+<span id="cb78-10"><a href="#cb78-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">left_join</span>(pla_fam, <span class="at">by =</span> <span class="st">&quot;id&quot;</span>) <span class="sc">|&gt;</span></span>
+<span id="cb78-11"><a href="#cb78-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">n_familias      =</span> <span class="fu">as.integer</span>(<span class="fu">rowSums</span>(<span class="fu">across</span>(<span class="fu">starts_with</span>(<span class="st">&quot;pf_&quot;</span>)))),</span>
+<span id="cb78-12"><a href="#cb78-12" aria-hidden="true" tabindex="-1"></a>         <span class="at">solo_pc         =</span> <span class="fu">as.integer</span>(pf_pc <span class="sc">==</span> <span class="dv">1</span> <span class="sc">&amp;</span> n_familias <span class="sc">==</span> <span class="dv">1</span>),</span>
+<span id="cb78-13"><a href="#cb78-13" aria-hidden="true" tabindex="-1"></a>         <span class="at">multiplataforma =</span> <span class="fu">as.integer</span>(n_familias <span class="sc">&gt;=</span> <span class="dv">2</span>))</span>
+<span id="cb78-14"><a href="#cb78-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb78-15"><a href="#cb78-15" aria-hidden="true" tabindex="-1"></a>pla_n</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 8,963 × 2
+      id n_plataformas
+   &lt;dbl&gt;         &lt;int&gt;
+ 1     3             4
+ 2    14             7
+ 3    20             3
+ 4    22             1
+ 5    24             1
+ 6    25             4
+ 7    26             2
+ 8    27             4
+ 9    28             3
+10    29             4
+# ℹ 8,953 more rows</code></pre>
 </div>
-<p><strong>Interpretación:</strong></p>
-<blockquote class="blockquote">
-<p><em>(¿Cuántas columnas se crearon? ¿Alguna característica muestra relación visible con <code>rating</code>?)</em></p>
-</blockquote>
+</div>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb80"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb80-1"><a href="#cb80-1" aria-hidden="true" tabindex="-1"></a>anio_ref <span class="ot">&lt;-</span> <span class="dv">2025</span></span>
+<span id="cb80-2"><a href="#cb80-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb80-3"><a href="#cb80-3" aria-hidden="true" tabindex="-1"></a>crear_tiempo <span class="ot">&lt;-</span> <span class="cf">function</span>(d) {</span>
+<span id="cb80-4"><a href="#cb80-4" aria-hidden="true" tabindex="-1"></a>  d <span class="sc">|&gt;</span></span>
+<span id="cb80-5"><a href="#cb80-5" aria-hidden="true" tabindex="-1"></a>    <span class="fu">mutate</span>(<span class="at">edad_juego =</span> anio_ref <span class="sc">-</span> anio,</span>
+<span id="cb80-6"><a href="#cb80-6" aria-hidden="true" tabindex="-1"></a>           <span class="at">era =</span> <span class="fu">cut</span>(anio,</span>
+<span id="cb80-7"><a href="#cb80-7" aria-hidden="true" tabindex="-1"></a>                     <span class="at">breaks =</span> <span class="fu">c</span>(<span class="sc">-</span><span class="cn">Inf</span>, <span class="dv">1999</span>, <span class="dv">2009</span>, <span class="dv">2019</span>, <span class="cn">Inf</span>),</span>
+<span id="cb80-8"><a href="#cb80-8" aria-hidden="true" tabindex="-1"></a>                     <span class="at">labels =</span> <span class="fu">c</span>(<span class="st">&quot;antes_2000&quot;</span>, <span class="st">&quot;2000_2009&quot;</span>, <span class="st">&quot;2010_2019&quot;</span>, <span class="st">&quot;2020_mas&quot;</span>)))</span>
+<span id="cb80-9"><a href="#cb80-9" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb81"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb81-1"><a href="#cb81-1" aria-hidden="true" tabindex="-1"></a>df4 <span class="ot">&lt;-</span> df3 <span class="sc">|&gt;</span></span>
+<span id="cb81-2"><a href="#cb81-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">left_join</span>(gen_feat, <span class="at">by =</span> <span class="st">&quot;id&quot;</span>) <span class="sc">|&gt;</span></span>
+<span id="cb81-3"><a href="#cb81-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">left_join</span>(pla_feat, <span class="at">by =</span> <span class="st">&quot;id&quot;</span>) <span class="sc">|&gt;</span></span>
+<span id="cb81-4"><a href="#cb81-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="fu">across</span>(<span class="fu">c</span>(n_generos, <span class="fu">starts_with</span>(<span class="st">&quot;gen_&quot;</span>)), \(x) <span class="fu">replace_na</span>(x, <span class="dv">0</span>L)),</span>
+<span id="cb81-5"><a href="#cb81-5" aria-hidden="true" tabindex="-1"></a>         <span class="at">autopublicado =</span> <span class="fu">case_when</span>(</span>
+<span id="cb81-6"><a href="#cb81-6" aria-hidden="true" tabindex="-1"></a>           <span class="fu">is.na</span>(developers) <span class="sc">|</span> <span class="fu">is.na</span>(publishers) <span class="sc">~</span> <span class="cn">NA_integer_</span>,</span>
+<span id="cb81-7"><a href="#cb81-7" aria-hidden="true" tabindex="-1"></a>           developers <span class="sc">==</span> publishers              <span class="sc">~</span> <span class="dv">1</span>L,</span>
+<span id="cb81-8"><a href="#cb81-8" aria-hidden="true" tabindex="-1"></a>           <span class="cn">TRUE</span>                                  <span class="sc">~</span> <span class="dv">0</span>L)) <span class="sc">|&gt;</span></span>
+<span id="cb81-9"><a href="#cb81-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">crear_tiempo</span>()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb82"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb82-1"><a href="#cb82-1" aria-hidden="true" tabindex="-1"></a><span class="fu">dim</span>(df4)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] 8963   42</code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb84"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb84-1"><a href="#cb84-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Consistencia: n_generos coincide con la suma de columnas gen_*</span></span>
+<span id="cb84-2"><a href="#cb84-2" aria-hidden="true" tabindex="-1"></a><span class="fu">all</span>(df4<span class="sc">$</span>n_generos <span class="sc">==</span> <span class="fu">rowSums</span>(<span class="fu">select</span>(df4, <span class="fu">starts_with</span>(<span class="st">&quot;gen_&quot;</span>))))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] TRUE</code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb86"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb86-1"><a href="#cb86-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Columnas nuevas con NA (se tratan en los pasos 5 y 7)</span></span>
+<span id="cb86-2"><a href="#cb86-2" aria-hidden="true" tabindex="-1"></a>df4 <span class="sc">|&gt;</span></span>
+<span id="cb86-3"><a href="#cb86-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summarise</span>(<span class="fu">across</span>(<span class="fu">c</span>(autopublicado, edad_juego, era), \(x) <span class="fu">sum</span>(<span class="fu">is.na</span>(x))))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 1 × 3
+  autopublicado edad_juego   era
+          &lt;int&gt;      &lt;int&gt; &lt;int&gt;
+1           640        155   155</code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb88"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb88-1"><a href="#cb88-1" aria-hidden="true" tabindex="-1"></a>df4 <span class="sc">|&gt;</span> <span class="fu">count</span>(era)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 5 × 2
+  era            n
+  &lt;fct&gt;      &lt;int&gt;
+1 antes_2000  1407
+2 2000_2009   2071
+3 2010_2019   3724
+4 2020_mas    1606
+5 &lt;NA&gt;         155</code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb90"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb90-1"><a href="#cb90-1" aria-hidden="true" tabindex="-1"></a>df4 <span class="sc">|&gt;</span> <span class="fu">count</span>(autopublicado)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 3 × 2
+  autopublicado     n
+          &lt;int&gt; &lt;int&gt;
+1             0  6114
+2             1  2209
+3            NA   640</code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb92"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb92-1"><a href="#cb92-1" aria-hidden="true" tabindex="-1"></a>df4 <span class="sc">|&gt;</span> <span class="fu">count</span>(n_familias)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 7 × 2
+  n_familias     n
+       &lt;int&gt; &lt;int&gt;
+1          1  4557
+2          2  1579
+3          3  1421
+4          4  1061
+5          5   304
+6          6    30
+7          7    11</code></pre>
+</div>
+</div>
+<p><strong>Interpretación I:</strong> - df4 tiene 8,963 filas y 42 columnas, las 8 de df3 más 34 nuevas (20 de género, 11 de plataformas, autopublicado, edad_juego y era). - La revisión de la asignación de familias no debe dejar plataformas mal clasificadas, y n_generos coincide con la suma de columnas gen_*. Las nuevas columnas con NA son edad_juego y era (155, los mismos de anio) y autopublicado (640, por faltar developers o publishers). - Más de la mitad de los juegos (4,557) están en una sola familia de plataformas, y 4,406 son multiplataforma.</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb94"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb94-1"><a href="#cb94-1" aria-hidden="true" tabindex="-1"></a>dif_rating <span class="ot">&lt;-</span> <span class="cf">function</span>(d, cols) {</span>
+<span id="cb94-2"><a href="#cb94-2" aria-hidden="true" tabindex="-1"></a>  d <span class="sc">|&gt;</span></span>
+<span id="cb94-3"><a href="#cb94-3" aria-hidden="true" tabindex="-1"></a>    <span class="fu">select</span>(rating, {{ cols }}) <span class="sc">|&gt;</span></span>
+<span id="cb94-4"><a href="#cb94-4" aria-hidden="true" tabindex="-1"></a>    <span class="fu">pivot_longer</span>(<span class="sc">-</span>rating, <span class="at">names_to =</span> <span class="st">&quot;caracteristica&quot;</span>, <span class="at">values_to =</span> <span class="st">&quot;valor&quot;</span>) <span class="sc">|&gt;</span></span>
+<span id="cb94-5"><a href="#cb94-5" aria-hidden="true" tabindex="-1"></a>    <span class="fu">group_by</span>(caracteristica) <span class="sc">|&gt;</span></span>
+<span id="cb94-6"><a href="#cb94-6" aria-hidden="true" tabindex="-1"></a>    <span class="fu">summarise</span>(<span class="at">n_con      =</span> <span class="fu">sum</span>(valor <span class="sc">==</span> <span class="dv">1</span>),</span>
+<span id="cb94-7"><a href="#cb94-7" aria-hidden="true" tabindex="-1"></a>              <span class="at">media_con  =</span> <span class="fu">mean</span>(rating[valor <span class="sc">==</span> <span class="dv">1</span>]),</span>
+<span id="cb94-8"><a href="#cb94-8" aria-hidden="true" tabindex="-1"></a>              <span class="at">media_sin  =</span> <span class="fu">mean</span>(rating[valor <span class="sc">==</span> <span class="dv">0</span>]),</span>
+<span id="cb94-9"><a href="#cb94-9" aria-hidden="true" tabindex="-1"></a>              <span class="at">dif        =</span> media_con <span class="sc">-</span> media_sin,</span>
+<span id="cb94-10"><a href="#cb94-10" aria-hidden="true" tabindex="-1"></a>              <span class="at">.groups =</span> <span class="st">&quot;drop&quot;</span>) <span class="sc">|&gt;</span></span>
+<span id="cb94-11"><a href="#cb94-11" aria-hidden="true" tabindex="-1"></a>    <span class="fu">mutate</span>(<span class="fu">across</span>(<span class="fu">c</span>(media_con, media_sin, dif), \(x) <span class="fu">round</span>(x, <span class="dv">3</span>))) <span class="sc">|&gt;</span></span>
+<span id="cb94-12"><a href="#cb94-12" aria-hidden="true" tabindex="-1"></a>    <span class="fu">arrange</span>(dif)</span>
+<span id="cb94-13"><a href="#cb94-13" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb94-14"><a href="#cb94-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb94-15"><a href="#cb94-15" aria-hidden="true" tabindex="-1"></a><span class="co"># Géneros (solo juegos con género conocido)</span></span>
+<span id="cb94-16"><a href="#cb94-16" aria-hidden="true" tabindex="-1"></a><span class="fu">dif_rating</span>(<span class="fu">filter</span>(df4, <span class="sc">!</span><span class="fu">is.na</span>(genres)), <span class="fu">starts_with</span>(<span class="st">&quot;gen_&quot;</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 19 × 5
+   caracteristica            n_con media_con media_sin    dif
+   &lt;chr&gt;                     &lt;int&gt;     &lt;dbl&gt;     &lt;dbl&gt;  &lt;dbl&gt;
+ 1 gen_indie                  2253      3.81      3.94 -0.137
+ 2 gen_sports                  429      3.83      3.91 -0.081
+ 3 gen_massively_multiplayer   128      3.84      3.91 -0.072
+ 4 gen_simulation             1106      3.85      3.92 -0.068
+ 5 gen_card                     74      3.84      3.91 -0.063
+ 6 gen_casual                 1066      3.86      3.92 -0.06 
+ 7 gen_board_games              59      3.86      3.91 -0.051
+ 8 gen_family                  141      3.86      3.91 -0.049
+ 9 gen_action                 3841      3.88      3.93 -0.041
+10 gen_adventure              2984      3.88      3.92 -0.036
+11 gen_strategy               1343      3.88      3.91 -0.028
+12 gen_shooter                 790      3.89      3.91 -0.018
+13 gen_arcade                  857      3.90      3.91 -0.005
+14 gen_puzzle                  622      3.92      3.91  0.015
+15 gen_rpg                    1790      3.92      3.90  0.017
+16 gen_fighting                323      3.93      3.91  0.02 
+17 gen_racing                  450      3.93      3.91  0.021
+18 gen_educational              60      3.96      3.91  0.05 
+19 gen_platformer              622      3.96      3.90  0.056</code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb96"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb96-1"><a href="#cb96-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Plataformas</span></span>
+<span id="cb96-2"><a href="#cb96-2" aria-hidden="true" tabindex="-1"></a><span class="fu">dif_rating</span>(df4, <span class="fu">c</span>(<span class="fu">starts_with</span>(<span class="st">&quot;pf_&quot;</span>), solo_pc, multiplataforma))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 9 × 5
+  caracteristica  n_con media_con media_sin    dif
+  &lt;chr&gt;           &lt;int&gt;     &lt;dbl&gt;     &lt;dbl&gt;  &lt;dbl&gt;
+1 pf_pc            6515      3.88      3.99 -0.107
+2 pf_xbox          2467      3.85      3.93 -0.08 
+3 multiplataforma  4406      3.88      3.94 -0.065
+4 pf_playstation   3609      3.89      3.92 -0.032
+5 solo_pc          2706      3.89      3.92 -0.022
+6 pf_movil         1471      3.91      3.91 -0.002
+7 pf_nintendo      3027      3.92      3.90  0.02 
+8 pf_otras          449      3.95      3.91  0.041
+9 pf_sega           461      4.00      3.90  0.093</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb98"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb98-1"><a href="#cb98-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Correlación con rating (n_generos solo con género conocido)</span></span>
+<span id="cb98-2"><a href="#cb98-2" aria-hidden="true" tabindex="-1"></a><span class="fu">cor</span>(df4<span class="sc">$</span>edad_juego, df4<span class="sc">$</span>rating, <span class="at">use =</span> <span class="st">&quot;complete.obs&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] 0.112671</code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb100"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb100-1"><a href="#cb100-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cor</span>(df4<span class="sc">$</span>n_plataformas, df4<span class="sc">$</span>rating)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] -0.07047033</code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb102"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb102-1"><a href="#cb102-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cor</span>(df4<span class="sc">$</span>n_familias, df4<span class="sc">$</span>rating)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] -0.08135814</code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb104"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb104-1"><a href="#cb104-1" aria-hidden="true" tabindex="-1"></a>df4 <span class="sc">|&gt;</span> <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(genres)) <span class="sc">|&gt;</span> <span class="fu">summarise</span>(<span class="at">r =</span> <span class="fu">cor</span>(n_generos, rating))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 1 × 1
+       r
+   &lt;dbl&gt;
+1 -0.160</code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb106"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb106-1"><a href="#cb106-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Rating por era y por autopublicado</span></span>
+<span id="cb106-2"><a href="#cb106-2" aria-hidden="true" tabindex="-1"></a>df4 <span class="sc">|&gt;</span></span>
+<span id="cb106-3"><a href="#cb106-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(era)) <span class="sc">|&gt;</span></span>
+<span id="cb106-4"><a href="#cb106-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(era) <span class="sc">|&gt;</span></span>
+<span id="cb106-5"><a href="#cb106-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summarise</span>(<span class="at">n =</span> <span class="fu">n</span>(), <span class="at">media =</span> <span class="fu">mean</span>(rating), <span class="at">sd =</span> <span class="fu">sd</span>(rating))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 4 × 4
+  era            n media    sd
+  &lt;fct&gt;      &lt;int&gt; &lt;dbl&gt; &lt;dbl&gt;
+1 antes_2000  1407  3.98 0.312
+2 2000_2009   2071  3.96 0.321
+3 2010_2019   3724  3.85 0.346
+4 2020_mas    1606  3.91 0.345</code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb108"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb108-1"><a href="#cb108-1" aria-hidden="true" tabindex="-1"></a>df4 <span class="sc">|&gt;</span></span>
+<span id="cb108-2"><a href="#cb108-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(autopublicado)) <span class="sc">|&gt;</span></span>
+<span id="cb108-3"><a href="#cb108-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(autopublicado) <span class="sc">|&gt;</span></span>
+<span id="cb108-4"><a href="#cb108-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summarise</span>(<span class="at">n =</span> <span class="fu">n</span>(), <span class="at">media =</span> <span class="fu">mean</span>(rating), <span class="at">sd =</span> <span class="fu">sd</span>(rating))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 2 × 4
+  autopublicado     n media    sd
+          &lt;int&gt; &lt;int&gt; &lt;dbl&gt; &lt;dbl&gt;
+1             0  6114  3.91 0.334
+2             1  2209  3.88 0.352</code></pre>
+</div>
+</div>
+<p><strong>Interpretación II:</strong> Las relaciones son pequeñas, ninguna con |r| mayor a 0.18, lo que concuerda con las correlaciones débiles del EDA. Aun así, el género Indie y el uso de PC se asocian con ratings más bajos, mientras que los juegos de épocas anteriores (antes de 2010) y los de mega corporaciones como Sega tienen ratings algo mayores. La relación con <em>era</em> no es lineal: el mínimo está en 2010–2019 y se recupera ligeramente a partir de 2020. <em>Hipótesis:</em> Indie, PC y la década de 2010 coinciden en muchos juegos, así que sus efectos están mezclados. Autopublicado tiene un efecto muy pequeño (0.02), pero se conserva por ser simple y por su relación con el género Indie.</p>
 <hr>
 </section>
-<section id="tratamiento-de-faltantes-reglas-e-indicadores" class="level3">
-<h3 class="anchored" data-anchor-id="tratamiento-de-faltantes-reglas-e-indicadores">5. Tratamiento de faltantes (reglas e indicadores)</h3>
-<p><strong>Decisiones por variable:</strong></p>
+<section id="tratamiento-de-faltantes" class="level3">
+<h3 class="anchored" data-anchor-id="tratamiento-de-faltantes">Tratamiento de faltantes</h3>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb110"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb110-1"><a href="#cb110-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Tasa de coincidencia developers == publishers en casos completos</span></span>
+<span id="cb110-2"><a href="#cb110-2" aria-hidden="true" tabindex="-1"></a>completos <span class="ot">&lt;-</span> df4 <span class="sc">|&gt;</span> <span class="fu">filter</span>(<span class="sc">!</span><span class="fu">is.na</span>(developers), <span class="sc">!</span><span class="fu">is.na</span>(publishers))</span>
+<span id="cb110-3"><a href="#cb110-3" aria-hidden="true" tabindex="-1"></a><span class="fu">tibble</span>(<span class="at">casos_completos =</span> <span class="fu">nrow</span>(completos),</span>
+<span id="cb110-4"><a href="#cb110-4" aria-hidden="true" tabindex="-1"></a>       <span class="at">tasa_coincidencia =</span> <span class="fu">round</span>(<span class="fu">mean</span>(completos<span class="sc">$</span>developers <span class="sc">==</span> completos<span class="sc">$</span>publishers), <span class="dv">3</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 1 × 2
+  casos_completos tasa_coincidencia
+            &lt;int&gt;             &lt;dbl&gt;
+1            8323             0.265</code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb112"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb112-1"><a href="#cb112-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Cuántas filas recuperaría la regla de copiar (solo para justificar el descarte)</span></span>
+<span id="cb112-2"><a href="#cb112-2" aria-hidden="true" tabindex="-1"></a>df4 <span class="sc">|&gt;</span></span>
+<span id="cb112-3"><a href="#cb112-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summarise</span>(<span class="at">solo_falta_publisher =</span> <span class="fu">sum</span>(<span class="sc">!</span><span class="fu">is.na</span>(developers) <span class="sc">&amp;</span>  <span class="fu">is.na</span>(publishers)),</span>
+<span id="cb112-4"><a href="#cb112-4" aria-hidden="true" tabindex="-1"></a>            <span class="at">solo_falta_developer =</span> <span class="fu">sum</span>( <span class="fu">is.na</span>(developers) <span class="sc">&amp;</span> <span class="sc">!</span><span class="fu">is.na</span>(publishers)),</span>
+<span id="cb112-5"><a href="#cb112-5" aria-hidden="true" tabindex="-1"></a>            <span class="at">faltan_ambos         =</span> <span class="fu">sum</span>( <span class="fu">is.na</span>(developers) <span class="sc">&amp;</span>  <span class="fu">is.na</span>(publishers)))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 1 × 3
+  solo_falta_publisher solo_falta_developer faltan_ambos
+                 &lt;int&gt;                &lt;int&gt;        &lt;int&gt;
+1                  368                  142          130</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb114"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb114-1"><a href="#cb114-1" aria-hidden="true" tabindex="-1"></a><span class="co"># ¿Los ceros de suggestions_count tienen un patrón?</span></span>
+<span id="cb114-2"><a href="#cb114-2" aria-hidden="true" tabindex="-1"></a>df4 <span class="sc">|&gt;</span></span>
+<span id="cb114-3"><a href="#cb114-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">cero =</span> suggestions_count <span class="sc">==</span> <span class="dv">0</span>) <span class="sc">|&gt;</span></span>
+<span id="cb114-4"><a href="#cb114-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(cero) <span class="sc">|&gt;</span></span>
+<span id="cb114-5"><a href="#cb114-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summarise</span>(<span class="at">n =</span> <span class="fu">n</span>(), <span class="at">rating_medio =</span> <span class="fu">mean</span>(rating), <span class="at">anio_medio =</span> <span class="fu">mean</span>(anio, <span class="at">na.rm =</span> <span class="cn">TRUE</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 2 × 4
+  cero      n rating_medio anio_medio
+  &lt;lgl&gt; &lt;int&gt;        &lt;dbl&gt;      &lt;dbl&gt;
+1 FALSE  8914         3.91      2010.
+2 TRUE     49         4.00      2013.</code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb116"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb116-1"><a href="#cb116-1" aria-hidden="true" tabindex="-1"></a><span class="fu">t.test</span>(rating <span class="sc">~</span> (suggestions_count <span class="sc">==</span> <span class="dv">0</span>), <span class="at">data =</span> df4)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+    Welch Two Sample t-test
+
+data:  rating by suggestions_count == 0
+t = -1.6154, df = 48.397, p-value = 0.1127
+alternative hypothesis: true difference in means between group FALSE and group TRUE is not equal to 0
+95 percent confidence interval:
+ -0.20374482  0.02218905
+sample estimates:
+mean in group FALSE  mean in group TRUE 
+           3.908202            3.998980 </code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb118"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb118-1"><a href="#cb118-1" aria-hidden="true" tabindex="-1"></a>df5 <span class="ot">&lt;-</span> df4 <span class="sc">|&gt;</span></span>
+<span id="cb118-2"><a href="#cb118-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(</span>
+<span id="cb118-3"><a href="#cb118-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">genero_na         =</span> <span class="fu">as.integer</span>(<span class="fu">is.na</span>(genres)),</span>
+<span id="cb118-4"><a href="#cb118-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">anio_na           =</span> <span class="fu">as.integer</span>(<span class="fu">is.na</span>(anio)),</span>
+<span id="cb118-5"><a href="#cb118-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">developer_unknown =</span> <span class="fu">as.integer</span>(<span class="fu">is.na</span>(developers)),</span>
+<span id="cb118-6"><a href="#cb118-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">publisher_unknown =</span> <span class="fu">as.integer</span>(<span class="fu">is.na</span>(publishers)),</span>
+<span id="cb118-7"><a href="#cb118-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">developers        =</span> <span class="fu">replace_na</span>(developers, <span class="st">&quot;Unknown&quot;</span>),</span>
+<span id="cb118-8"><a href="#cb118-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">publishers        =</span> <span class="fu">replace_na</span>(publishers, <span class="st">&quot;Unknown&quot;</span>),</span>
+<span id="cb118-9"><a href="#cb118-9" aria-hidden="true" tabindex="-1"></a>    <span class="co"># autopublicado era NA cuando faltaba developers o publishers; esa</span></span>
+<span id="cb118-10"><a href="#cb118-10" aria-hidden="true" tabindex="-1"></a>    <span class="co"># información ya la llevan los dos indicadores *_unknown, así que se pasa a 0</span></span>
+<span id="cb118-11"><a href="#cb118-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">autopublicado     =</span> <span class="fu">replace_na</span>(autopublicado, <span class="dv">0</span>L)</span>
+<span id="cb118-12"><a href="#cb118-12" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb118-13"><a href="#cb118-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb118-14"><a href="#cb118-14" aria-hidden="true" tabindex="-1"></a><span class="fu">dim</span>(df5)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] 8963   46</code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb120"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb120-1"><a href="#cb120-1" aria-hidden="true" tabindex="-1"></a>df5 <span class="sc">|&gt;</span> <span class="fu">summarise</span>(<span class="fu">across</span>(<span class="fu">c</span>(genero_na, anio_na, developer_unknown, publisher_unknown), sum))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 1 × 4
+  genero_na anio_na developer_unknown publisher_unknown
+      &lt;int&gt;   &lt;int&gt;             &lt;int&gt;             &lt;int&gt;
+1       366     155               272               498</code></pre>
+</div>
+</div>
+<p><strong>Interpretación:</strong></p>
+<ul>
+<li>En los casos completos, developers y publishers coinciden solo en alrededor de una cuarta parte de los juegos (en mi revisión con df1, ≈ 26.6 %). Copiar uno al otro introduciría un valor incorrecto en tres de cada cuatro filas, así que la regla se descarta y esos casos quedan como “Unknown” con su indicador. [Confirma que tu <code>tasa_coincidencia</code> da un valor similar.]</li>
+<li>Con la regla de copiar se habrían recuperado como máximo ≈ 500 filas (solo falta uno de los dos); el resto (≈ 135 sin ninguno) no era recuperable de todos modos.</li>
+<li>Los 50 ceros de suggestions_count tienen un rating medio algo mayor (≈ 4.00 contra 3.91). [Interpreta el p-valor de <code>t.test</code>; con n = 50 la evidencia es débil, así que se mantienen como cero real.]</li>
+<li>df5 tiene [completar] columnas: las 42 de df4 más 4 indicadores.</li>
+</ul>
+<hr>
+</section>
+<section id="imputación-de-anio" class="level3">
+<h3 class="anchored" data-anchor-id="imputación-de-anio">Imputación de <code>anio</code></h3>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb122"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb122-1"><a href="#cb122-1" aria-hidden="true" tabindex="-1"></a><span class="fu">hist</span>(df5<span class="sc">$</span>anio)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img role="img" src="data:image/png;base64,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" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb123"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb123-1"><a href="#cb123-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sum</span>(<span class="fu">is.na</span>(df5<span class="sc">$</span>anio))   <span class="co"># debe dar 0</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] 155</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb125"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb125-1"><a href="#cb125-1" aria-hidden="true" tabindex="-1"></a>mediana_global <span class="ot">&lt;-</span> <span class="fu">round</span>(<span class="fu">median</span>(df5<span class="sc">$</span>anio, <span class="at">na.rm =</span> <span class="cn">TRUE</span>))</span>
+<span id="cb125-2"><a href="#cb125-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb125-3"><a href="#cb125-3" aria-hidden="true" tabindex="-1"></a>df5 <span class="ot">&lt;-</span> df5 <span class="sc">|&gt;</span></span>
+<span id="cb125-4"><a href="#cb125-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">anio =</span> <span class="fu">if_else</span>(<span class="fu">is.na</span>(anio), mediana_global, anio)) <span class="sc">|&gt;</span></span>
+<span id="cb125-5"><a href="#cb125-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">crear_tiempo</span>()   <span class="co"># recalcula edad_juego y era con el anio ya imputado</span></span>
+<span id="cb125-6"><a href="#cb125-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb125-7"><a href="#cb125-7" aria-hidden="true" tabindex="-1"></a><span class="fu">hist</span>(df5<span class="sc">$</span>anio)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output-display">
+<div>
+<figure class="figure">
+<p><img role="img" src="data:image/png;base64,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" class="img-fluid figure-img" width="672"></p>
+</figure>
+</div>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb126"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb126-1"><a href="#cb126-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sum</span>(<span class="fu">is.na</span>(df5<span class="sc">$</span>anio))   <span class="co"># debe dar 0</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] 0</code></pre>
+</div>
+</div>
+<p><strong>Interpretación:</strong></p>
+<ul>
+<li>Tras la imputación no quedan NA en anio, edad_juego ni era.</li>
+<li>El histograma muestra una distribución asimétrica hacia la izquierda: pocos juegos antes de 1990, un crecimiento sostenido y un máximo en 2015–2020 (≈ 2,300 juegos), seguido de 2010–2015 (≈ 1,700). La barra de 2020–2025 (≈ 1,200) es menor porque 2025 está incompleto y porque la fuente tiene menos juegos recientes con datos completos.</li>
+<li>Esa forma coincide con lo observado en el EDA (concentración entre 1990 y 2025 y máximo hacia 2016–2018). La imputación no la distorsionó: no aparece ningún pico artificial ni cambia la forma general.</li>
+<li>Como las 155 filas imputadas son solo el 1.73 % del total y reciben un valor central, su efecto en la distribución es pequeño, pero sí le dan un poco más de peso al año de la mediana.</li>
+</ul>
+<hr>
+</section>
+</section>
+<section id="alta-cardinalidad-developers-y-publishers" class="level2">
+<h2 class="anchored" data-anchor-id="alta-cardinalidad-developers-y-publishers">Alta cardinalidad: developers y publishers</h2>
+<p><strong>Decisión.</strong> Hay 5,296 desarrolladores y 3,343 publishers, y cerca del 69 % aparece en un solo juego, así que una columna por empresa no es viable. En vez de eso, cada variable se resume en dos números por juego, calculados con todo el conjunto:</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Variable nueva</th>
+<th>Qué mide</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>n_juegos_dev</code>, <code>n_juegos_pub</code></td>
+<td>El mayor número de juegos entre las empresas del juego (tamaño de la empresa)</td>
+</tr>
+<tr class="even">
+<td><code>dev_top</code>, <code>pub_top</code></td>
+<td>1 si alguna de sus empresas está entre las 10 con más juegos</td>
+</tr>
+</tbody>
+</table>
+<p>Los juegos sin dato quedan en 0 y se distinguen con <code>developer_unknown</code> y <code>publisher_unknown</code>.</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb128"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb128-1"><a href="#cb128-1" aria-hidden="true" tabindex="-1"></a>K_emp <span class="ot">&lt;-</span> <span class="dv">10</span></span>
+<span id="cb128-2"><a href="#cb128-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb128-3"><a href="#cb128-3" aria-hidden="true" tabindex="-1"></a>frecuencias <span class="ot">&lt;-</span> <span class="cf">function</span>(d, col) {</span>
+<span id="cb128-4"><a href="#cb128-4" aria-hidden="true" tabindex="-1"></a>  d <span class="sc">|&gt;</span></span>
+<span id="cb128-5"><a href="#cb128-5" aria-hidden="true" tabindex="-1"></a>    <span class="fu">select</span>(id, <span class="at">valor =</span> {{ col }}) <span class="sc">|&gt;</span></span>
+<span id="cb128-6"><a href="#cb128-6" aria-hidden="true" tabindex="-1"></a>    <span class="fu">filter</span>(valor <span class="sc">!=</span> <span class="st">&quot;Unknown&quot;</span>) <span class="sc">|&gt;</span></span>
+<span id="cb128-7"><a href="#cb128-7" aria-hidden="true" tabindex="-1"></a>    <span class="fu">separate_longer_delim</span>(valor, <span class="at">delim =</span> <span class="st">&quot;, &quot;</span>) <span class="sc">|&gt;</span></span>
+<span id="cb128-8"><a href="#cb128-8" aria-hidden="true" tabindex="-1"></a>    <span class="fu">distinct</span>(id, valor) <span class="sc">|&gt;</span></span>
+<span id="cb128-9"><a href="#cb128-9" aria-hidden="true" tabindex="-1"></a>    <span class="fu">count</span>(valor, <span class="at">name =</span> <span class="st">&quot;n_juegos&quot;</span>)</span>
+<span id="cb128-10"><a href="#cb128-10" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb128-11"><a href="#cb128-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb128-12"><a href="#cb128-12" aria-hidden="true" tabindex="-1"></a>tab_dev <span class="ot">&lt;-</span> <span class="fu">frecuencias</span>(df5, developers)</span>
+<span id="cb128-13"><a href="#cb128-13" aria-hidden="true" tabindex="-1"></a>tab_pub <span class="ot">&lt;-</span> <span class="fu">frecuencias</span>(df5, publishers)</span>
+<span id="cb128-14"><a href="#cb128-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb128-15"><a href="#cb128-15" aria-hidden="true" tabindex="-1"></a>devs_frecuentes <span class="ot">&lt;-</span> tab_dev <span class="sc">|&gt;</span> <span class="fu">slice_max</span>(n_juegos, <span class="at">n =</span> K_emp, <span class="at">with_ties =</span> <span class="cn">FALSE</span>) <span class="sc">|&gt;</span> <span class="fu">pull</span>(valor)</span>
+<span id="cb128-16"><a href="#cb128-16" aria-hidden="true" tabindex="-1"></a>pubs_frecuentes <span class="ot">&lt;-</span> tab_pub <span class="sc">|&gt;</span> <span class="fu">slice_max</span>(n_juegos, <span class="at">n =</span> K_emp, <span class="at">with_ties =</span> <span class="cn">FALSE</span>) <span class="sc">|&gt;</span> <span class="fu">pull</span>(valor)</span>
+<span id="cb128-17"><a href="#cb128-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb128-18"><a href="#cb128-18" aria-hidden="true" tabindex="-1"></a>empresas_resumen <span class="ot">&lt;-</span> <span class="cf">function</span>(d, col, frecuentes, tabla, pref) {</span>
+<span id="cb128-19"><a href="#cb128-19" aria-hidden="true" tabindex="-1"></a>  d <span class="sc">|&gt;</span></span>
+<span id="cb128-20"><a href="#cb128-20" aria-hidden="true" tabindex="-1"></a>    <span class="fu">select</span>(id, <span class="at">valor =</span> {{ col }}) <span class="sc">|&gt;</span></span>
+<span id="cb128-21"><a href="#cb128-21" aria-hidden="true" tabindex="-1"></a>    <span class="fu">filter</span>(valor <span class="sc">!=</span> <span class="st">&quot;Unknown&quot;</span>) <span class="sc">|&gt;</span></span>
+<span id="cb128-22"><a href="#cb128-22" aria-hidden="true" tabindex="-1"></a>    <span class="fu">separate_longer_delim</span>(valor, <span class="at">delim =</span> <span class="st">&quot;, &quot;</span>) <span class="sc">|&gt;</span></span>
+<span id="cb128-23"><a href="#cb128-23" aria-hidden="true" tabindex="-1"></a>    <span class="fu">distinct</span>(id, valor) <span class="sc">|&gt;</span></span>
+<span id="cb128-24"><a href="#cb128-24" aria-hidden="true" tabindex="-1"></a>    <span class="fu">left_join</span>(tabla, <span class="at">by =</span> <span class="st">&quot;valor&quot;</span>) <span class="sc">|&gt;</span></span>
+<span id="cb128-25"><a href="#cb128-25" aria-hidden="true" tabindex="-1"></a>    <span class="fu">summarise</span>(<span class="sc">!!</span><span class="fu">paste0</span>(<span class="st">&quot;n_juegos_&quot;</span>, pref) <span class="sc">:</span><span class="er">=</span> <span class="fu">max</span>(n_juegos),</span>
+<span id="cb128-26"><a href="#cb128-26" aria-hidden="true" tabindex="-1"></a>              <span class="sc">!!</span><span class="fu">paste0</span>(pref, <span class="st">&quot;_top&quot;</span>)      <span class="sc">:</span><span class="er">=</span> <span class="fu">as.integer</span>(<span class="fu">any</span>(valor <span class="sc">%in%</span> frecuentes)),</span>
+<span id="cb128-27"><a href="#cb128-27" aria-hidden="true" tabindex="-1"></a>              <span class="at">.by =</span> id)</span>
+<span id="cb128-28"><a href="#cb128-28" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb128-29"><a href="#cb128-29" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb128-30"><a href="#cb128-30" aria-hidden="true" tabindex="-1"></a>df6 <span class="ot">&lt;-</span> df5 <span class="sc">|&gt;</span></span>
+<span id="cb128-31"><a href="#cb128-31" aria-hidden="true" tabindex="-1"></a>  <span class="fu">left_join</span>(<span class="fu">empresas_resumen</span>(df5, developers, devs_frecuentes, tab_dev, <span class="st">&quot;dev&quot;</span>), <span class="at">by =</span> <span class="st">&quot;id&quot;</span>) <span class="sc">|&gt;</span></span>
+<span id="cb128-32"><a href="#cb128-32" aria-hidden="true" tabindex="-1"></a>  <span class="fu">left_join</span>(<span class="fu">empresas_resumen</span>(df5, publishers, pubs_frecuentes, tab_pub, <span class="st">&quot;pub&quot;</span>), <span class="at">by =</span> <span class="st">&quot;id&quot;</span>) <span class="sc">|&gt;</span></span>
+<span id="cb128-33"><a href="#cb128-33" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="fu">across</span>(<span class="fu">c</span>(n_juegos_dev, dev_top, n_juegos_pub, pub_top), \(x) <span class="fu">replace_na</span>(x, <span class="dv">0</span>L)))</span>
+<span id="cb128-34"><a href="#cb128-34" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb128-35"><a href="#cb128-35" aria-hidden="true" tabindex="-1"></a><span class="fu">dim</span>(df6)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] 8963   50</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb130"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb130-1"><a href="#cb130-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Las 10 empresas elegidas</span></span>
+<span id="cb130-2"><a href="#cb130-2" aria-hidden="true" tabindex="-1"></a><span class="fu">tibble</span>(<span class="at">developers =</span> devs_frecuentes, <span class="at">publishers =</span> pubs_frecuentes)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 10 × 2
+   developers                         publishers                 
+   &lt;chr&gt;                              &lt;chr&gt;                      
+ 1 Nintendo                           Nintendo                   
+ 2 Capcom                             Electronic Arts            
+ 3 Sony Interactive Entertainment     SEGA                       
+ 4 SEGA                               Ubisoft Entertainment      
+ 5 Konami Digital Entertainment       Capcom                     
+ 6 Square Enix                        Square Enix                
+ 7 Ubisoft                            Konami                     
+ 8 Electronic Arts                    Activision Blizzard        
+ 9 Electronic Arts Canada             Microsoft Studios          
+10 BANDAI NAMCO Entertainment America Sony Computer Entertainment</code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb132"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb132-1"><a href="#cb132-1" aria-hidden="true" tabindex="-1"></a><span class="co"># % de juegos por categoría</span></span>
+<span id="cb132-2"><a href="#cb132-2" aria-hidden="true" tabindex="-1"></a>df6 <span class="sc">|&gt;</span></span>
+<span id="cb132-3"><a href="#cb132-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summarise</span>(<span class="at">pct_dev_unknown =</span> <span class="fu">mean</span>(developer_unknown) <span class="sc">*</span> <span class="dv">100</span>,</span>
+<span id="cb132-4"><a href="#cb132-4" aria-hidden="true" tabindex="-1"></a>            <span class="at">pct_dev_top     =</span> <span class="fu">mean</span>(dev_top) <span class="sc">*</span> <span class="dv">100</span>,</span>
+<span id="cb132-5"><a href="#cb132-5" aria-hidden="true" tabindex="-1"></a>            <span class="at">pct_dev_otro    =</span> <span class="dv">100</span> <span class="sc">-</span> pct_dev_unknown <span class="sc">-</span> pct_dev_top,</span>
+<span id="cb132-6"><a href="#cb132-6" aria-hidden="true" tabindex="-1"></a>            <span class="at">pct_pub_unknown =</span> <span class="fu">mean</span>(publisher_unknown) <span class="sc">*</span> <span class="dv">100</span>,</span>
+<span id="cb132-7"><a href="#cb132-7" aria-hidden="true" tabindex="-1"></a>            <span class="at">pct_pub_top     =</span> <span class="fu">mean</span>(pub_top) <span class="sc">*</span> <span class="dv">100</span>,</span>
+<span id="cb132-8"><a href="#cb132-8" aria-hidden="true" tabindex="-1"></a>            <span class="at">pct_pub_otro    =</span> <span class="dv">100</span> <span class="sc">-</span> pct_pub_unknown <span class="sc">-</span> pct_pub_top)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 1 × 6
+  pct_dev_unknown pct_dev_top pct_dev_otro pct_pub_unknown pct_pub_top
+            &lt;dbl&gt;       &lt;dbl&gt;        &lt;dbl&gt;           &lt;dbl&gt;       &lt;dbl&gt;
+1            3.03        14.0         83.0            5.56        29.2
+# ℹ 1 more variable: pct_pub_otro &lt;dbl&gt;</code></pre>
+</div>
+</div>
+<p><strong>Interpretación:</strong></p>
+<ul>
+<li>[Completar: las 10 empresas más frecuentes y qué % de juegos tiene al menos una de ellas.]</li>
+<li>Las empresas del top 10 cubren una minoría de los juegos (en mi revisión, ≈ 14 % en developers y ≈ 31 % en publishers), así que <code>dev_top</code> y <code>pub_top</code> aportan poca señal por sí solas. Para compensar, <code>n_juegos_dev</code> y <code>n_juegos_pub</code> resumen el tamaño de todas las empresas, incluidas las pequeñas.</li>
+<li>Algunas empresas del top pertenecen a la misma corporación (por ejemplo, “Electronic Arts” y “Electronic Arts Canada”). No se unificaron para no agregar reglas manuales.</li>
+</ul>
+<hr>
+</section>
+<section id="agrupación-de-géneros-codificación-de-era-y-selección-final" class="level2">
+<h2 class="anchored" data-anchor-id="agrupación-de-géneros-codificación-de-era-y-selección-final">Agrupación de géneros, codificación de <code>era</code> y selección final</h2>
+<p><strong>Decisión.</strong> Los 19 géneros se agrupan en 4 grupos y <code>gen_indie</code> queda aparte, porque es el de mayor diferencia de rating en el paso 4 (−0.137). <code>n_generos</code> conserva el conteo completo. <code>era</code> pasa a dummies, tomando <code>antes_2000</code> como referencia. No se aplica escalado: en regresión lineal no cambia las predicciones, y si se necesita se hará en Modelado con la media y desviación de entrenamiento.</p>
+<table class="caption-top table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Grupo</th>
+<th>Géneros que incluye</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>gen_g_accion</code></td>
+<td>Action, Shooter, Fighting, Platformer, Arcade, Racing, Sports</td>
+</tr>
+<tr class="even">
+<td><code>gen_g_aventura_rol</code></td>
+<td>Adventure, RPG, Massively Multiplayer</td>
+</tr>
+<tr class="odd">
+<td><code>gen_g_estrategia</code></td>
+<td>Strategy, Simulation</td>
+</tr>
+<tr class="even">
+<td><code>gen_g_casual</code></td>
+<td>Casual, Puzzle, Card, Board Games, Family, Educational</td>
+</tr>
+</tbody>
+</table>
+<p>Los grupos son un criterio propio: se agrupó por parecido de jugabilidad, no con un método estadístico.</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb134"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb134-1"><a href="#cb134-1" aria-hidden="true" tabindex="-1"></a>grupos_gen <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb134-2"><a href="#cb134-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">gen_g_accion       =</span> <span class="fu">c</span>(<span class="st">&quot;gen_action&quot;</span>, <span class="st">&quot;gen_shooter&quot;</span>, <span class="st">&quot;gen_fighting&quot;</span>, <span class="st">&quot;gen_platformer&quot;</span>,</span>
+<span id="cb134-3"><a href="#cb134-3" aria-hidden="true" tabindex="-1"></a>                         <span class="st">&quot;gen_arcade&quot;</span>, <span class="st">&quot;gen_racing&quot;</span>, <span class="st">&quot;gen_sports&quot;</span>),</span>
+<span id="cb134-4"><a href="#cb134-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">gen_g_aventura_rol =</span> <span class="fu">c</span>(<span class="st">&quot;gen_adventure&quot;</span>, <span class="st">&quot;gen_rpg&quot;</span>, <span class="st">&quot;gen_massively_multiplayer&quot;</span>),</span>
+<span id="cb134-5"><a href="#cb134-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">gen_g_estrategia   =</span> <span class="fu">c</span>(<span class="st">&quot;gen_strategy&quot;</span>, <span class="st">&quot;gen_simulation&quot;</span>),</span>
+<span id="cb134-6"><a href="#cb134-6" aria-hidden="true" tabindex="-1"></a>  <span class="at">gen_g_casual       =</span> <span class="fu">c</span>(<span class="st">&quot;gen_casual&quot;</span>, <span class="st">&quot;gen_puzzle&quot;</span>, <span class="st">&quot;gen_card&quot;</span>, <span class="st">&quot;gen_board_games&quot;</span>,</span>
+<span id="cb134-7"><a href="#cb134-7" aria-hidden="true" tabindex="-1"></a>                         <span class="st">&quot;gen_family&quot;</span>, <span class="st">&quot;gen_educational&quot;</span>)</span>
+<span id="cb134-8"><a href="#cb134-8" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb134-9"><a href="#cb134-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb134-10"><a href="#cb134-10" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (g <span class="cf">in</span> <span class="fu">names</span>(grupos_gen)) {</span>
+<span id="cb134-11"><a href="#cb134-11" aria-hidden="true" tabindex="-1"></a>  df6[[g]] <span class="ot">&lt;-</span> <span class="fu">as.integer</span>(<span class="fu">rowSums</span>(df6[grupos_gen[[g]]]) <span class="sc">&gt;</span> <span class="dv">0</span>)</span>
+<span id="cb134-12"><a href="#cb134-12" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb134-13"><a href="#cb134-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb134-14"><a href="#cb134-14" aria-hidden="true" tabindex="-1"></a><span class="co"># Ningún género debe quedar sin asignar (debe dar character(0))</span></span>
+<span id="cb134-15"><a href="#cb134-15" aria-hidden="true" tabindex="-1"></a><span class="fu">setdiff</span>(<span class="fu">grep</span>(<span class="st">&quot;^gen_[a-z]&quot;</span>, <span class="fu">names</span>(df6), <span class="at">value =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb134-16"><a href="#cb134-16" aria-hidden="true" tabindex="-1"></a>        <span class="fu">c</span>(<span class="fu">unlist</span>(grupos_gen), <span class="st">&quot;gen_indie&quot;</span>, <span class="fu">names</span>(grupos_gen)))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>character(0)</code></pre>
+</div>
+</div>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb136"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb136-1"><a href="#cb136-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (l <span class="cf">in</span> <span class="fu">levels</span>(df6<span class="sc">$</span>era)[<span class="sc">-</span><span class="dv">1</span>]) {</span>
+<span id="cb136-2"><a href="#cb136-2" aria-hidden="true" tabindex="-1"></a>  df6[[<span class="fu">paste0</span>(<span class="st">&quot;era_&quot;</span>, l)]] <span class="ot">&lt;-</span> <span class="fu">as.integer</span>(df6<span class="sc">$</span>era <span class="sc">==</span> l)</span>
+<span id="cb136-3"><a href="#cb136-3" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb136-4"><a href="#cb136-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb136-5"><a href="#cb136-5" aria-hidden="true" tabindex="-1"></a>df_modelo <span class="ot">&lt;-</span> df6 <span class="sc">|&gt;</span></span>
+<span id="cb136-6"><a href="#cb136-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(id, rating,</span>
+<span id="cb136-7"><a href="#cb136-7" aria-hidden="true" tabindex="-1"></a>         suggestions_count, edad_juego, n_generos, n_plataformas, n_juegos_dev, n_juegos_pub,</span>
+<span id="cb136-8"><a href="#cb136-8" aria-hidden="true" tabindex="-1"></a>         anio_na, genero_na, developer_unknown, publisher_unknown, autopublicado,</span>
+<span id="cb136-9"><a href="#cb136-9" aria-hidden="true" tabindex="-1"></a>         dev_top, pub_top,</span>
+<span id="cb136-10"><a href="#cb136-10" aria-hidden="true" tabindex="-1"></a>         gen_indie, <span class="fu">starts_with</span>(<span class="st">&quot;gen_g_&quot;</span>),</span>
+<span id="cb136-11"><a href="#cb136-11" aria-hidden="true" tabindex="-1"></a>         <span class="fu">starts_with</span>(<span class="st">&quot;pf_&quot;</span>),</span>
+<span id="cb136-12"><a href="#cb136-12" aria-hidden="true" tabindex="-1"></a>         <span class="fu">starts_with</span>(<span class="st">&quot;era_&quot;</span>))</span>
+<span id="cb136-13"><a href="#cb136-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb136-14"><a href="#cb136-14" aria-hidden="true" tabindex="-1"></a><span class="fu">dim</span>(df_modelo)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] 8963   30</code></pre>
+</div>
+</div>
+<p><strong>Variables descartadas:</strong></p>
+<ul>
+<li><code>n_familias</code>, <code>solo_pc</code> y <code>multiplataforma</code> se derivan de <code>pf_*</code> y <code>n_plataformas</code>. En particular, <code>n_familias</code> es exactamente la suma de las <code>pf_*</code> y provocaría colinealidad perfecta.</li>
+<li><code>anio</code> se elimina porque <code>edad_juego = 2025 − anio</code>.</li>
+<li>Las 19 columnas <code>gen_*</code> se sustituyen por los 4 grupos más <code>gen_indie</code>.</li>
+<li><code>platforms</code>, <code>genres</code>, <code>developers</code>, <code>publishers</code>, <code>era</code> y <code>anio</code> ya están codificadas o resumidas.</li>
+</ul>
+<p><strong>Diccionario del dataset final</strong> (30 columnas: <code>id</code> como llave, <code>rating</code> como objetivo y 28 predictoras):</p>
 <table class="caption-top table">
 <colgroup>
 <col style="width: 33%">
@@ -3322,121 +3945,149 @@ $ publishers        &lt;chr&gt; &quot;Mihiraghi&quot;, &quot;Bethesda Softworks&
 </colgroup>
 <thead>
 <tr class="header">
-<th>Variable</th>
-<th>NA</th>
-<th>Tratamiento</th>
+<th>Bloque</th>
+<th>Variables</th>
+<th>Cómo se construyó</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><code>publishers</code> / <code>developers</code></td>
-<td>5.6 % / 3.1 %</td>
-<td>Si falta uno y el otro existe, copiarlo (verificar antes la tasa de coincidencia en casos completos); el resto como <code>&quot;Unknown&quot;</code></td>
+<td>Numéricas</td>
+<td><code>suggestions_count</code></td>
+<td>Original (se conserva con reserva, ver EDA)</td>
 </tr>
 <tr class="even">
-<td><code>genres</code></td>
-<td>4.1 %</td>
-<td>One-hot en 0 más indicador <code>genero_na</code></td>
+<td></td>
+<td><code>edad_juego</code></td>
+<td>2025 − <code>anio</code> (con <code>anio</code> imputado)</td>
 </tr>
 <tr class="odd">
-<td><code>anio</code></td>
-<td>1.7 %</td>
-<td>Indicador <code>anio_na</code> ahora; imputación en el paso 7</td>
+<td></td>
+<td><code>n_generos</code>, <code>n_plataformas</code></td>
+<td>Número de géneros / plataformas del juego</td>
 </tr>
 <tr class="even">
-<td><code>suggestions_count</code> = 0</td>
-<td>50 filas</td>
-<td>Mantener como cero real si no hay patrón (ver paso 1)</td>
+<td></td>
+<td><code>n_juegos_dev</code>, <code>n_juegos_pub</code></td>
+<td>Mayor número de juegos entre sus empresas</td>
+</tr>
+<tr class="odd">
+<td>Faltantes</td>
+<td><code>anio_na</code>, <code>genero_na</code>, <code>developer_unknown</code>, <code>publisher_unknown</code></td>
+<td>1 si el dato faltaba</td>
+</tr>
+<tr class="even">
+<td></td>
+<td><code>autopublicado</code></td>
+<td>1 si developers = publishers; 0 si no coinciden o falta alguno</td>
+</tr>
+<tr class="odd">
+<td>Empresas</td>
+<td><code>dev_top</code>, <code>pub_top</code></td>
+<td>1 si alguna empresa está entre las 10 con más juegos</td>
+</tr>
+<tr class="even">
+<td>Género</td>
+<td><code>gen_indie</code></td>
+<td>1 si el juego es Indie</td>
+</tr>
+<tr class="odd">
+<td></td>
+<td><code>gen_g_accion</code>, <code>gen_g_aventura_rol</code>, <code>gen_g_estrategia</code>, <code>gen_g_casual</code></td>
+<td>1 si tiene algún género del grupo</td>
+</tr>
+<tr class="even">
+<td>Plataforma</td>
+<td><code>pf_playstation</code>, <code>pf_xbox</code>, <code>pf_nintendo</code>, <code>pf_pc</code>, <code>pf_movil</code>, <code>pf_sega</code>, <code>pf_otras</code></td>
+<td>1 si está en alguna plataforma de la familia</td>
+</tr>
+<tr class="odd">
+<td>Tiempo</td>
+<td><code>era_2000_2009</code>, <code>era_2010_2019</code>, <code>era_2020_mas</code></td>
+<td>Dummies de <code>era</code> (referencia: <code>antes_2000</code>)</td>
 </tr>
 </tbody>
 </table>
-<p>No se aplica eliminación por lista general: la unión de los NA categóricos se acerca al 10 % de las filas y podría sesgar si la ausencia se relaciona con <code>rating</code>.</p>
-<div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb77"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb77-1"><a href="#cb77-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Tasa de coincidencia developer == publisher en casos completos</span></span>
-<span id="cb77-2"><a href="#cb77-2" aria-hidden="true" tabindex="-1"></a><span class="co"># Copiar uno al otro cuando falte</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</div>
-<div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb78"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb78-1"><a href="#cb78-1" aria-hidden="true" tabindex="-1"></a><span class="co"># genero_na, anio_na, developer_unknown, publisher_unknown</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</div>
 <p><strong>Interpretación:</strong></p>
-<blockquote class="blockquote">
-<p><em>(¿Qué proporción de NA se recuperó con la regla? ¿Cuántos quedaron como “Unknown”?)</em></p>
-</blockquote>
-<hr>
-</section>
-<section id="partición-entrenamiento-prueba" class="level3">
-<h3 class="anchored" data-anchor-id="partición-entrenamiento-prueba">6. Partición entrenamiento / prueba</h3>
-<p><strong>Decisión.</strong> 80/20, con semilla fija y estratificada por rangos de <code>rating</code>. A partir de aquí, todo ajuste usa solo entrenamiento.</p>
-<div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb79"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb79-1"><a href="#cb79-1" aria-hidden="true" tabindex="-1"></a><span class="co"># set.seed(...)</span></span>
-<span id="cb79-2"><a href="#cb79-2" aria-hidden="true" tabindex="-1"></a><span class="co"># estratos: cut(rating, quantile(...))</span></span>
-<span id="cb79-3"><a href="#cb79-3" aria-hidden="true" tabindex="-1"></a><span class="co"># train / test</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</div>
-<p><strong>Interpretación:</strong></p>
-<blockquote class="blockquote">
-<p><em>(Verifica que la distribución de <code>rating</code> sea similar en ambos conjuntos.)</em></p>
-</blockquote>
-<hr>
-</section>
-<section id="imputación-de-anio-solo-con-entrenamiento" class="level3">
-<h3 class="anchored" data-anchor-id="imputación-de-anio-solo-con-entrenamiento">7. Imputación de <code>anio</code> (solo con entrenamiento)</h3>
-<p><strong>Decisión.</strong> Con más de 500 casos, <code>missForest</code> es adecuado (kNN se reserva para conjuntos pequeños). Se compara con una línea base simple (mediana + indicador) para justificar la elección. <code>rating</code> nunca se imputa.</p>
-<div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb80"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb80-1"><a href="#cb80-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Mediana de anio en train (línea base)</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</div>
-<div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb81"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb81-1"><a href="#cb81-1" aria-hidden="true" tabindex="-1"></a><span class="co"># set.seed(1234)</span></span>
-<span id="cb81-2"><a href="#cb81-2" aria-hidden="true" tabindex="-1"></a><span class="co"># missForest() sobre train con las variables ya construidas</span></span>
-<span id="cb81-3"><a href="#cb81-3" aria-hidden="true" tabindex="-1"></a><span class="co"># aplicar el modelo de imputación a test</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</div>
-<div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb82"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb82-1"><a href="#cb82-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Densidad de anio antes y después de imputar</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</div>
-<p><strong>Interpretación:</strong></p>
-<blockquote class="blockquote">
-<p><em>(¿Cambió la distribución de <code>anio</code>? ¿Difieren los dos métodos?)</em></p>
-</blockquote>
-<hr>
-</section>
-<section id="alta-cardinalidad-developers-y-publishers-solo-con-entrenamiento" class="level3">
-<h3 class="anchored" data-anchor-id="alta-cardinalidad-developers-y-publishers-solo-con-entrenamiento">8. Alta cardinalidad: <code>developers</code> y <code>publishers</code> (solo con entrenamiento)</h3>
-<p><strong>Decisión.</strong> Hay 5,296 desarrolladores (69 % con un solo juego) y 3,343 publishers. Se conservan los que tienen ≥ 30 juegos en entrenamiento y el resto pasa a <code>&quot;Other&quot;</code>. También se calculan <code>n_juegos_dev</code> y <code>n_juegos_pub</code> con entrenamiento.</p>
-<div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb83"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb83-1"><a href="#cb83-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Frecuencias en train; umbral &gt;= 30; &quot;Other&quot; para el resto</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</div>
-<div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb84"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb84-1"><a href="#cb84-1" aria-hidden="true" tabindex="-1"></a><span class="co"># n_juegos_dev, n_juegos_pub (calculados en train)</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</div>
-<p><strong>Interpretación:</strong></p>
-<blockquote class="blockquote">
-<p><em>(¿Cuántos niveles quedaron? ¿Qué porcentaje de juegos cae en “Other”?)</em></p>
-</blockquote>
-<hr>
-</section>
-<section id="codificación-y-escalado" class="level3">
-<h3 class="anchored" data-anchor-id="codificación-y-escalado">9. Codificación y escalado</h3>
-<p><strong>Decisión.</strong> Variables categóricas finales a dummies. El escalado depende del modelo:</p>
 <ul>
-<li><code>rpart</code>: no necesita escalado.</li>
-<li>Regresión regularizada, kNN o redes: estandarizar <code>suggestions_count</code>, <code>edad_juego</code> y los conteos, con media y desviación de entrenamiento.</li>
+<li>[Completar: dimensiones de <code>df_modelo</code>; deben ser 8,963 filas y 30 columnas.]</li>
+<li>El dataset pasó de ≈ 95 columnas posibles (una por género, plataforma y empresa) a 28 predictoras, con una variable por idea y todas con un significado directo.</li>
+<li>El costo es que ya no se distingue entre empresas específicas ni entre géneros dentro de un mismo grupo. Con correlaciones individuales cercanas a 0.1, se espera que el efecto en el modelo sea pequeño.</li>
 </ul>
-<div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb85"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb85-1"><a href="#cb85-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Solo si el modelo lo requiere; aplicar a test los parámetros de train</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-</div>
-<p><strong>Interpretación:</strong></p>
-<blockquote class="blockquote">
-<p><em>(Dimensiones finales de la matriz de entrenamiento y prueba.)</em></p>
-</blockquote>
 <hr>
 </section>
-<section id="validación-del-tratamiento-y-bitácora" class="level3">
-<h3 class="anchored" data-anchor-id="validación-del-tratamiento-y-bitácora">10. Validación del tratamiento y bitácora</h3>
+<section id="validación-del-tratamiento" class="level2">
+<h2 class="anchored" data-anchor-id="validación-del-tratamiento">9. Validación del tratamiento</h2>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb86"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb86-1"><a href="#cb86-1" aria-hidden="true" tabindex="-1"></a><span class="co"># sum(is.na(...)) por conjunto; dim(); comparación de columnas train vs test</span></span>
-<span id="cb86-2"><a href="#cb86-2" aria-hidden="true" tabindex="-1"></a><span class="co"># df_status() final</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb138"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb138-1"><a href="#cb138-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sum</span>(<span class="fu">is.na</span>(df_modelo))   <span class="co"># debe dar 0</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] 0</code></pre>
 </div>
-<p><strong>Bitácora de decisiones:</strong></p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb140"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb140-1"><a href="#cb140-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Columnas constantes (no debe haber ninguna)</span></span>
+<span id="cb140-2"><a href="#cb140-2" aria-hidden="true" tabindex="-1"></a>df_modelo <span class="sc">|&gt;</span></span>
+<span id="cb140-3"><a href="#cb140-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summarise</span>(<span class="fu">across</span>(<span class="fu">everything</span>(), n_distinct)) <span class="sc">|&gt;</span></span>
+<span id="cb140-4"><a href="#cb140-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">pivot_longer</span>(<span class="fu">everything</span>(), <span class="at">names_to =</span> <span class="st">&quot;variable&quot;</span>, <span class="at">values_to =</span> <span class="st">&quot;valores_distintos&quot;</span>) <span class="sc">|&gt;</span></span>
+<span id="cb140-5"><a href="#cb140-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(valores_distintos <span class="sc">==</span> <span class="dv">1</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 0 × 2
+# ℹ 2 variables: variable &lt;chr&gt;, valores_distintos &lt;int&gt;</code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb142"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb142-1"><a href="#cb142-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Todo numérico</span></span>
+<span id="cb142-2"><a href="#cb142-2" aria-hidden="true" tabindex="-1"></a><span class="fu">sapply</span>(df_modelo, class) <span class="sc">|&gt;</span> <span class="fu">table</span>()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>
+integer numeric 
+     26       4 </code></pre>
+</div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb144"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb144-1"><a href="#cb144-1" aria-hidden="true" tabindex="-1"></a><span class="fu">df_status</span>(df_modelo) <span class="sc">|&gt;</span> <span class="fu">filter</span>(q_na <span class="sc">&gt;</span> <span class="dv">0</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>             variable q_zeros p_zeros q_na p_na q_inf p_inf    type unique
+1                  id       0    0.00    0    0     0     0 numeric   8963
+2              rating       0    0.00    0    0     0     0 numeric    130
+3   suggestions_count      49    0.55    0    0     0     0 numeric    820
+4          edad_juego      38    0.42    0    0     0     0 numeric     54
+5           n_generos     366    4.08    0    0     0     0 integer      9
+6       n_plataformas       0    0.00    0    0     0     0 integer     19
+7        n_juegos_dev     273    3.05    0    0     0     0 integer     52
+8        n_juegos_pub     499    5.57    0    0     0     0 integer     68
+9             anio_na    8808   98.27    0    0     0     0 integer      2
+10          genero_na    8597   95.92    0    0     0     0 integer      2
+11  developer_unknown    8691   96.97    0    0     0     0 integer      2
+12  publisher_unknown    8465   94.44    0    0     0     0 integer      2
+13      autopublicado    6754   75.35    0    0     0     0 integer      2
+14            dev_top    7707   85.99    0    0     0     0 integer      2
+15            pub_top    6347   70.81    0    0     0     0 integer      2
+16          gen_indie    6710   74.86    0    0     0     0 integer      2
+17       gen_g_accion    3781   42.18    0    0     0     0 integer      2
+18 gen_g_aventura_rol    4874   54.38    0    0     0     0 integer      2
+19   gen_g_estrategia    6867   76.61    0    0     0     0 integer      2
+20       gen_g_casual    7264   81.04    0    0     0     0 integer      2
+21              pf_pc    2448   27.31    0    0     0     0 integer      2
+22            pf_xbox    6496   72.48    0    0     0     0 integer      2
+23           pf_movil    7492   83.59    0    0     0     0 integer      2
+24        pf_nintendo    5936   66.23    0    0     0     0 integer      2
+25     pf_playstation    5354   59.73    0    0     0     0 integer      2
+26           pf_otras    8514   94.99    0    0     0     0 integer      2
+27            pf_sega    8502   94.86    0    0     0     0 integer      2
+28      era_2000_2009    6892   76.89    0    0     0     0 integer      2
+29      era_2010_2019    5084   56.72    0    0     0     0 integer      2
+30       era_2020_mas    7357   82.08    0    0     0     0 integer      2</code></pre>
+</div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] variable q_zeros  p_zeros  q_na     p_na     q_inf    p_inf    type    
+[9] unique  
+&lt;0 rows&gt; (or 0-length row.names)</code></pre>
+</div>
+</div>
+<p>Bitácora de decisiones:</p>
 <table class="caption-top table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+</colgroup>
 <thead>
 <tr class="header">
 <th>Paso</th>
@@ -3451,95 +4102,58 @@ $ publishers        &lt;chr&gt; &quot;Mihiraghi&quot;, &quot;Bethesda Softworks&
 <td>2</td>
 <td>Limpieza</td>
 <td>8,978</td>
-<td></td>
-<td></td>
+<td>8,963</td>
+<td>12</td>
 </tr>
 <tr class="even">
 <td>3</td>
 <td>Selección</td>
-<td></td>
-<td></td>
-<td></td>
+<td>8,963</td>
+<td>8,963</td>
+<td>8</td>
 </tr>
 <tr class="odd">
 <td>4</td>
 <td>Características</td>
-<td></td>
-<td></td>
-<td></td>
+<td>8,963</td>
+<td>8,963</td>
+<td>42</td>
 </tr>
 <tr class="even">
 <td>5</td>
-<td>Faltantes</td>
-<td></td>
-<td></td>
-<td></td>
+<td>Faltantes (indicadores y “Unknown”)</td>
+<td>8,963</td>
+<td>8,963</td>
+<td>46</td>
 </tr>
 <tr class="odd">
 <td>6</td>
-<td>Partición</td>
-<td></td>
-<td>train: / test:</td>
-<td></td>
+<td>Imputación de <code>anio</code> (mediana global)</td>
+<td>8,963</td>
+<td>8,963</td>
+<td>46</td>
 </tr>
 <tr class="even">
-<td>7–9</td>
-<td>Imputación, cardinalidad, codificación</td>
-<td></td>
-<td></td>
-<td></td>
+<td>7</td>
+<td>Resumen de developers y publishers</td>
+<td>8,963</td>
+<td>8,963</td>
+<td>50</td>
+</tr>
+<tr class="odd">
+<td>8</td>
+<td>Géneros agrupados, <code>era</code> a dummies, selección final</td>
+<td>8,963</td>
+<td>8,963</td>
+<td>30</td>
 </tr>
 </tbody>
 </table>
 <p><strong>Interpretación:</strong></p>
-<blockquote class="blockquote">
-<p><em>(No deben quedar NA y train y test deben tener las mismas columnas.)</em></p>
-</blockquote>
-<hr>
-</section>
-<section id="efecto-de-las-transformaciones-opcional" class="level3">
-<h3 class="anchored" data-anchor-id="efecto-de-las-transformaciones-opcional">11. Efecto de las transformaciones (opcional)</h3>
-<p>Validación cruzada con <code>rpart</code> comparando RMSE entre bloques, contra la línea base de ~0.34:</p>
-<table class="caption-top table">
-<thead>
-<tr class="header">
-<th>Conjunto de predictores</th>
-<th>RMSE (CV)</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>Solo numéricas originales</td>
-<td></td>
-</tr>
-<tr class="even">
-<td>+ géneros y plataformas</td>
-<td></td>
-</tr>
-<tr class="odd">
-<td>+ edad y era</td>
-<td></td>
-</tr>
-<tr class="even">
-<td>+ conteos y autopublicado</td>
-<td></td>
-</tr>
-</tbody>
-</table>
-<p><strong>Interpretación:</strong></p>
-<blockquote class="blockquote">
-<p><em>(Con correlaciones individuales de ~0.1, se espera una mejora modesta sobre la línea base.)</em></p>
-</blockquote>
-<hr>
-</section>
-<section id="limitaciones-del-tratamiento" class="level3">
-<h3 class="anchored" data-anchor-id="limitaciones-del-tratamiento">Limitaciones del tratamiento</h3>
 <ul>
-<li>El conjunto no incluye el número de votos detrás de cada <code>rating</code>, por lo que el objetivo es ruidoso.</li>
-<li>El significado de <code>suggestions_count</code> está por confirmar y podría ser posterior al éxito del juego (riesgo de fuga).</li>
-<li>No se puede descartar que los faltantes sean NMAR.</li>
+<li>[Completar: 0 NA, sin columnas constantes y todas las variables numéricas. Verifica con <code>dim()</code> que las columnas de la bitácora coinciden con tus resultados.]</li>
+<li></li>
 </ul>
-</section>
 </section>
 </section>
 
