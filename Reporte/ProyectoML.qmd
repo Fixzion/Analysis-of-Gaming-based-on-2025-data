@@ -12,7 +12,9 @@ execute:
 ## Librerias
 
 ```{r}
+library(caret)
 library(rpart)
+library(rpart.plot)
 library(tidyverse)
 library(ggplot2)
 library(funModeling)
@@ -305,7 +307,7 @@ Variables que no se analizan. Una línea sobre name, image y description, que se
 
 **Decisiones para el tratamiento.** - Se confirma `rating` como variable objetivo (regresión). - `id`, `name`, `image` y `description` se descartan del modelo; `updated` se excluye como predictora. - `suggestions_count` se conserva con reserva: su significado está por confirmar y podría ser posterior al éxito del juego. - Las columnas multivalor se separan, los géneros y plataformas se codifican y `developers` y `publishers` se agrupan por frecuencia. - Los faltantes se tratan con indicadores y categoría "Unknown", y `anio` se imputa solo con entrenamiento.
 
----
+------------------------------------------------------------------------
 
 ## Transformación/Tratamiento de los datos
 
@@ -389,7 +391,6 @@ cor(sombra) |>
 
 **Interpretación (sombra):** La correlación más alta es entre developers y publishers (r = 0.33): tienden a faltar juntos, aunque de forma moderada. Le siguen genres con publishers (0.17) y genres con developers (0.10). El resto es prácticamente cero (platforms casi no se relaciona con nada).
 
-
 ### Limpieza ---
 
 **Decisiones:**
@@ -430,26 +431,25 @@ df2 |>
 df2 |> summarise(media = mean(rating), sd = sd(rating))
 ```
 
-**Interpretación:** 
+**Interpretación:**
 
-- Pasa de 8,978 a 8,963 filas, 4 pre-lanzamientos y 11 juegos sin plataforma. 
-- Después de la limpieza quedan 155 NA en anio, 272 en developers, 366 en genres y 498 en publishers (platforms queda sin NA); 993 juegos (11.08 %) conservan al menos un NA. 
+- Pasa de 8,978 a 8,963 filas, 4 pre-lanzamientos y 11 juegos sin plataforma.
+- Después de la limpieza quedan 155 NA en anio, 272 en developers, 366 en genres y 498 en publishers (platforms queda sin NA); 993 juegos (11.08 %) conservan al menos un NA.
 - El rating no cambia (media 3.91, desviación 0.34), así que las eliminaciones no alteraron la variable objetivo.
 - No hay nombres que difieran solo por mayúsculas en ninguna de las cuatro columnas, por lo que no es necesario pasar el texto a minúsculas.
 
 ### Selección de columnas
 
-|Variable	| Decisión	| Motivo|
-|------------------|-----------------|------------------------------------------|
-|id |	Conservar como llave |	Permite volver a df1; no es predictora|
-|rating |	Variable objetivo	| No se imputa ni se transforma|
-|anio, suggestions_count	| Predictoras numéricas	| anio reemplaza a released|
-|platforms, developers, genres, publishers	| Predictoras categóricas	| Con varios valores por celda|
-|name	| Descartar	| Identificador; se recupera con id|
-|released, fecha |	Descartar	Sustituidas por anio|
-|updated |	Descartar	| Es metadato del registro, no del juego: su correlación con rating es baja (0.10)|
-|image, description |	Descartar	| URL y texto libre; el análisis de texto queda fuera del alcance|
-
+| Variable | Decisión | Motivo |
+|-----------------|-----------------|--------------------------------------|
+| id | Conservar como llave | Permite volver a df1; no es predictora |
+| rating | Variable objetivo | No se imputa ni se transforma |
+| anio, suggestions_count | Predictoras numéricas | anio reemplaza a released |
+| platforms, developers, genres, publishers | Predictoras categóricas | Con varios valores por celda |
+| name | Descartar | Identificador; se recupera con id |
+| released, fecha | Descartar Sustituidas por anio |  |
+| updated | Descartar | Es metadato del registro, no del juego: su correlación con rating es baja (0.10) |
+| image, description | Descartar | URL y texto libre; el análisis de texto queda fuera del alcance |
 
 ```{r}
 #| label: seleccion-columnas
@@ -460,426 +460,459 @@ df3 <- df2 |>
 glimpse(df3)
 ```
 
-### Ingeniería de características
+### Variables categóricas a factor
 
-|Bloque	| Características |	Cómo se construye|
-|-----------|----------------------|-----------------------------------------|
-|Género	| gen_* (19 columnas 0/1), n_generos	| Se separan los géneros de cada celda|
-|Plataformas |	pf_* (7 familias 0/1), n_plataformas, n_familias, solo_pc, multiplataforma	| Cada plataforma se asigna a una familia|
-|Tiempo |	edad_juego, era	| A partir de anio|
-|Empresas	| autopublicado	| Compara developers con publishers|
+`platforms`, `developers`, `genres` y `publishers` guardan varios valores por celda. Convertirlas a factor tal cual crea un nivel por cada combinación, con demasiados niveles de un solo juego y niveles de prueba que no existen en entrenamiento:
 
-```{r}
-#| label: fe-generos
-gen_feat <- df3 |>
-  select(id, genres) |>
-  filter(!is.na(genres)) |>
-  mutate(n_generos = str_count(genres, ",") + 1L) |>
-  separate_longer_delim(genres, delim = ", ") |>
-  distinct(id, n_generos, genres) |>
-  mutate(valor = 1L) |>
-  pivot_wider(names_from = genres, values_from = valor,
-              values_fill = 0L, names_prefix = "gen_") |>
-  clean_names()
+| Variable | Niveles si se convierte tal cual | % de niveles con un solo juego | % de un conjunto de prueba con nivel nuevo |
+|---|---|---|---|
+| `platforms` | 2,764 | 80.9 | 25.5 |
+| `genres` | 676 | 44.7 | 4.1 |
+| `developers` | 5,147 | 80.5 | 52.3 |
+| `publishers` | 3,591 | 79.1 | 34.7 |
 
-gen_feat
-```
+**Decisión.** Es una recodificación de las mismas columnas, sin crear variables nuevas:
+
+- Se convierten a factor y los NA pasan al nivel `"Unknown"`.
+- Los niveles con menos de 30 juegos se agrupan en `"Other"` (el mismo corte del EDA). El criterio no usa `rating`.
+- Cada combinación completa es un nivel; los valores de las celdas **no se separan** (eso corresponde a la ingeniería de características de la versión 2).
 
 ```{r}
-#| label: fe-plataformas-familia
-pla_larga <- df3 |>
-  select(id, platforms) |>
-  separate_longer_delim(platforms, delim = ", ") |>
-  mutate(familia = case_when(
-    str_detect(platforms, "^(PlayStation|PS Vita|PSP)")         ~ "playstation",
-    str_detect(platforms, "^Xbox")                               ~ "xbox",
-    str_detect(platforms, "Nintendo|Wii|GameCube|Game Boy|NES")  ~ "nintendo",
-    platforms %in% c("PC", "macOS", "Linux")                     ~ "pc",
-    platforms %in% c("iOS", "Android")                           ~ "movil",
-    str_detect(platforms, "SEGA|Genesis|Dreamcast|Game Gear")    ~ "sega",
-    TRUE                                                         ~ "otras"))
-
-# Revisión de la asignación (51 filas)
-pla_larga |> distinct(platforms, familia) |> arrange(familia, platforms)
-```
-
-```{r}
-#| label: fe-plataformas
-pla_n <- pla_larga |> count(id, name = "n_plataformas")
-
-pla_fam <- pla_larga |>
-  distinct(id, familia) |>
-  mutate(valor = 1L) |>
-  pivot_wider(names_from = familia, values_from = valor,
-              values_fill = 0L, names_prefix = "pf_")
-
-pla_feat <- pla_n |>
-  left_join(pla_fam, by = "id") |>
-  mutate(n_familias      = as.integer(rowSums(across(starts_with("pf_")))),
-         solo_pc         = as.integer(pf_pc == 1 & n_familias == 1),
-         multiplataforma = as.integer(n_familias >= 2))
-
-pla_n
-```
-
-```{r}
-#| label: fe-tiempo
-anio_ref <- 2025
-
-crear_tiempo <- function(d) {
-  d |>
-    mutate(edad_juego = anio_ref - anio,
-           era = cut(anio,
-                     breaks = c(-Inf, 1999, 2009, 2019, Inf),
-                     labels = c("antes_2000", "2000_2009", "2010_2019", "2020_mas")))
-}
-```
-
-```{r}
-#| label: fe-ensamblado
+#| label: factores
 df4 <- df3 |>
-  left_join(gen_feat, by = "id") |>
-  left_join(pla_feat, by = "id") |>
-  mutate(across(c(n_generos, starts_with("gen_")), \(x) replace_na(x, 0L)),
-         autopublicado = case_when(
-           is.na(developers) | is.na(publishers) ~ NA_integer_,
-           developers == publishers              ~ 1L,
-           TRUE                                  ~ 0L)) |>
-  crear_tiempo()
+  mutate(across(c(platforms, genres, developers, publishers),
+                \(x) x |> factor() |>
+                  fct_na_value_to_level("Unknown") |>
+                  fct_lump_min(30, other_level = "Other")))
 ```
 
 ```{r}
-#| label: fe-verificacion
-dim(df4)
+#| label: verificacion-factores
+# Mismas columnas y filas que df3
+identical(names(df3), names(df4)); c(nrow(df3), nrow(df4))
 
-# Consistencia: n_generos coincide con la suma de columnas gen_*
-all(df4$n_generos == rowSums(select(df4, starts_with("gen_"))))
-
-# Columnas nuevas con NA (se tratan en los pasos 5 y 7)
+# Tipos
 df4 |>
-  summarise(across(c(autopublicado, edad_juego, era), \(x) sum(is.na(x))))
+  summarise(across(everything(), \(x) class(x)[1])) |>
+  pivot_longer(everything(), names_to = "variable", values_to = "clase")
 
-df4 |> count(era)
-df4 |> count(autopublicado)
-df4 |> count(n_familias)
-```
-
-**Interpretación I:** 
-- df4 tiene 8,963 filas y 42 columnas, las 8 de df3 más 34 nuevas (20 de género, 11 de plataformas, autopublicado, edad_juego y era). 
-- La revisión de la asignación de familias no debe dejar plataformas mal clasificadas, y n_generos coincide con la suma de columnas gen_*. Las nuevas columnas con NA son edad_juego y era (155, los mismos de anio) y autopublicado (640, por faltar developers o publishers). 
-- Más de la mitad de los juegos (4,557) están en una sola familia de plataformas, y 4,406 son multiplataforma.
-
-
-```{r}
-#| label: fe-rating
-dif_rating <- function(d, cols) {
-  d |>
-    select(rating, {{ cols }}) |>
-    pivot_longer(-rating, names_to = "caracteristica", values_to = "valor") |>
-    group_by(caracteristica) |>
-    summarise(n_con      = sum(valor == 1),
-              media_con  = mean(rating[valor == 1]),
-              media_sin  = mean(rating[valor == 0]),
-              dif        = media_con - media_sin,
-              .groups = "drop") |>
-    mutate(across(c(media_con, media_sin, dif), \(x) round(x, 3))) |>
-    arrange(dif)
-}
-
-# Géneros (solo juegos con género conocido)
-dif_rating(filter(df4, !is.na(genres)), starts_with("gen_"))
-
-# Plataformas
-dif_rating(df4, c(starts_with("pf_"), solo_pc, multiplataforma))
-```
-
-```{r}
-#| label: fe-rating-numericas
-# Correlación con rating (n_generos solo con género conocido)
-cor(df4$edad_juego, df4$rating, use = "complete.obs")
-cor(df4$n_plataformas, df4$rating)
-cor(df4$n_familias, df4$rating)
-df4 |> filter(!is.na(genres)) |> summarise(r = cor(n_generos, rating))
-
-# Rating por era y por autopublicado
+# Niveles, % en "Other" y juegos en "Unknown"
 df4 |>
-  filter(!is.na(era)) |>
-  group_by(era) |>
-  summarise(n = n(), media = mean(rating), sd = sd(rating))
+  summarise(across(c(platforms, genres, developers, publishers),
+                   list(niveles   = nlevels,
+                        pct_other = \(x) round(100 * mean(x == "Other"), 1),
+                        unknown   = \(x) sum(x == "Unknown")))) |>
+  pivot_longer(everything(), names_to = c("variable", ".value"),
+               names_pattern = "(.*)_(niveles|pct_other|unknown)")
 
-df4 |>
-  filter(!is.na(autopublicado)) |>
-  group_by(autopublicado) |>
-  summarise(n = n(), media = mean(rating), sd = sd(rating))
+# NA restantes por columna
+colSums(is.na(df4))
 ```
 
-**Interpretación II:** Las relaciones son pequeñas, ninguna con |r| mayor a 0.18, lo que concuerda con las correlaciones débiles del EDA. Aun así, el género Indie y el uso de PC se asocian con ratings más bajos, mientras que los juegos de épocas anteriores (antes de 2010) y los de mega corporaciones como Sega tienen ratings algo mayores. 
-La relación con *era* no es lineal: el mínimo está en 2010–2019 y se recupera ligeramente a partir de 2020. 
-*Hipótesis:* Indie, PC y la década de 2010 coinciden en muchos juegos, así que sus efectos están mezclados. Autopublicado tiene un efecto muy pequeño (0.02), pero se conserva por ser simple y por su relación con el género Indie.
+**Resultado.**
 
-------------------------------------------------------------------------
+| Variable | Niveles | % en "Other" | Juegos en "Unknown" |
+|---|---|---|---|
+| `platforms` | 39 | 51.3 | 0 |
+| `genres` | 56 | 25.9 | 366 |
+| `developers` | 11 | 89.5 | 273 |
+| `publishers` | 27 | 65.2 | 499 |
 
-### Tratamiento de faltantes
+Todos los niveles conservados tienen al menos 30 juegos. Solo queda NA en `anio` (155). En `developers` y `publishers` el recuento de "Unknown" supera en uno a los NA (273 frente a 272 y 499 frente a 498): probablemente ya existía un juego con el valor literal "Unknown".
 
-```{r}
-# Tasa de coincidencia developers == publishers en casos completos
-completos <- df4 |> filter(!is.na(developers), !is.na(publishers))
-tibble(casos_completos = nrow(completos),
-       tasa_coincidencia = round(mean(completos$developers == completos$publishers), 3))
+**Limitaciones.**
 
-# Cuántas filas recuperaría la regla de copiar (solo para justificar el descarte)
-df4 |>
-  summarise(solo_falta_publisher = sum(!is.na(developers) &  is.na(publishers)),
-            solo_falta_developer = sum( is.na(developers) & !is.na(publishers)),
-            faltan_ambos         = sum( is.na(developers) &  is.na(publishers)))
-```
-
-```{r}
-# ¿Los ceros de suggestions_count tienen un patrón?
-df4 |>
-  mutate(cero = suggestions_count == 0) |>
-  group_by(cero) |>
-  summarise(n = n(), rating_medio = mean(rating), anio_medio = mean(anio, na.rm = TRUE))
-
-t.test(rating ~ (suggestions_count == 0), data = df4)
-```
-
-```{r}
-df5 <- df4 |>
-  mutate(
-    genero_na         = as.integer(is.na(genres)),
-    anio_na           = as.integer(is.na(anio)),
-    developer_unknown = as.integer(is.na(developers)),
-    publisher_unknown = as.integer(is.na(publishers)),
-    developers        = replace_na(developers, "Unknown"),
-    publishers        = replace_na(publishers, "Unknown"),
-    # autopublicado era NA cuando faltaba developers o publishers; esa
-    # información ya la llevan los dos indicadores *_unknown, así que se pasa a 0
-    autopublicado     = replace_na(autopublicado, 0L)
-  )
-
-dim(df5)
-df5 |> summarise(across(c(genero_na, anio_na, developer_unknown, publisher_unknown), sum))
-```
-
-**Interpretación:**
-
-- En los casos completos, developers y publishers coinciden solo en alrededor de una cuarta parte de los juegos (en mi revisión con df1, ≈ 26.6 %). Copiar uno al otro introduciría un valor incorrecto en tres de cada cuatro filas, así que la regla se descarta y esos casos quedan como "Unknown" con su indicador. [Confirma que tu `tasa_coincidencia` da un valor similar.]
-- Con la regla de copiar se habrían recuperado como máximo ≈ 500 filas (solo falta uno de los dos); el resto (≈ 135 sin ninguno) no era recuperable de todos modos.
-- Los 50 ceros de suggestions_count tienen un rating medio algo mayor (≈ 4.00 contra 3.91). [Interpreta el p-valor de `t.test`; con n = 50 la evidencia es débil, así que se mantienen como cero real.]
-- df5 tiene [completar] columnas: las 42 de df4 más 4 indicadores.
-
-
-------------------------------------------------------------------------
+- Casi todos los desarrolladores (89.5 %) caen en "Other", por lo que `developers` aporta poca información en esta versión.
+- Se agrupan combinaciones completas. Separar los valores, quedarse con el principal o crear indicadores queda para la versión 2.
 
 ### Imputación de `anio`
 
+`anio` es la única variable que conserva NA después de la limpieza (155 juegos, 1.7 %). Se imputa con la **mediana** de los años observados, que es robusta y no usa ningún modelo. No se crea ningún indicador de imputación: eso es ingeniería de características y queda para la versión 2.
+
 ```{r}
-hist(df5$anio)
-sum(is.na(df5$anio))   # debe dar 0
+#| label: imputacion-anio
+mediana_anio <- as.integer(round(median(df4$anio, na.rm = TRUE)))   # 2013
+
+df5 <- df4 |>
+  mutate(anio = as.integer(if_else(is.na(anio), mediana_anio, anio)))
 ```
 
 ```{r}
-mediana_global <- round(median(df5$anio, na.rm = TRUE))
+#| label: verificacion-imputacion
+# NA antes y después
+c(antes = sum(is.na(df4$anio)), despues = sum(is.na(df5$anio)))
 
-df5 <- df5 |>
-  mutate(anio = if_else(is.na(anio), mediana_global, anio)) |>
-  crear_tiempo()   # recalcula edad_juego y era con el anio ya imputado
+# La distribución casi no cambia
+bind_rows(
+  df4 |> summarise(version = "antes (sin NA)", n = sum(!is.na(anio)),
+                   media = mean(anio, na.rm = TRUE), mediana = median(anio, na.rm = TRUE),
+                   sd = sd(anio, na.rm = TRUE)),
+  df5 |> summarise(version = "después", n = n(),
+                   media = mean(anio), mediana = median(anio), sd = sd(anio))
+) |>
+  mutate(across(c(media, sd), \(x) round(x, 2)))
 
-hist(df5$anio)
-sum(is.na(df5$anio))   # debe dar 0
+# No quedan NA y las columnas son las mismas
+colSums(is.na(df5))
+identical(names(df4), names(df5))
 ```
 
-**Interpretación:**
 
-- Tras la imputación no quedan NA en anio, edad_juego ni era.
-- El histograma muestra una distribución asimétrica hacia la izquierda: pocos juegos antes de 1990, un crecimiento sostenido y un máximo en 2015–2020 (≈ 2,300 juegos), seguido de 2010–2015 (≈ 1,700). La barra de 2020–2025 (≈ 1,200) es menor porque 2025 está incompleto y porque la fuente tiene menos juegos recientes con datos completos.
-- Esa forma coincide con lo observado en el EDA (concentración entre 1990 y 2025 y máximo hacia 2016–2018). La imputación no la distorsionó: no aparece ningún pico artificial ni cambia la forma general.
-- Como las 155 filas imputadas son solo el 1.73 % del total y reciben un valor central, su efecto en la distribución es pequeño, pero sí le dan un poco más de peso al año de la mediana.
+**Resultado.**
 
-------------------------------------------------------------------------
+- La mediana es 2013. Los 155 juegos sin fecha toman ese año y `anio` pasa a tipo entero.
+- La media pasa de 2010.47 a 2010.52 y la desviación estándar de 9.65 a 9.57, así que la distribución casi no cambia.
+- No quedan NA en ninguna columna de `df5` y las columnas son las mismas que en `df4`.
 
-### Alta cardinalidad: developers y publishers
+**Limitaciones.**
 
-**Decisión.** Hay 5,296 desarrolladores y 3,343 publishers, y cerca del 69 % aparece en un solo juego, así que una columna por empresa no es viable. En vez de eso, cada variable se resume en dos números por juego, calculados con todo el conjunto:
+- El año 2013 concentra ahora 456 juegos (301 originales más los 155 imputados), un pico artificial pequeño.
+- Estos 155 juegos tienen un rating promedio algo mayor (3.98 frente a 3.91), y la imputación los mezcla con los de 2013.
+- La mediana se calcula con todo el conjunto, antes del split. Como no interviene `rating`, el riesgo de fuga es mínimo, pero se documenta.
 
-| Variable nueva | Qué mide |
-|---|---|
-| `n_juegos_dev`, `n_juegos_pub` | El mayor número de juegos entre las empresas del juego (tamaño de la empresa) |
-| `dev_top`, `pub_top` | 1 si alguna de sus empresas está entre las 10 con más juegos |
-
-Los juegos sin dato quedan en 0 y se distinguen con `developer_unknown` y `publisher_unknown`.
+### Guarado del dataset procesado
 
 ```{r}
-K_emp <- 10
+#| label: guardar-procesado
+# Carpeta de datos procesados (se crea si no existe); ajusta el nombre si tu carpeta es otra
+dir.create(here("Data", "Processed"), showWarnings = FALSE, recursive = TRUE)
 
-frecuencias <- function(d, col) {
-  d |>
-    select(id, valor = {{ col }}) |>
-    filter(valor != "Unknown") |>
-    separate_longer_delim(valor, delim = ", ") |>
-    distinct(id, valor) |>
-    count(valor, name = "n_juegos")
-}
+ruta_procesado <- here("Data", "Processed", "gaming_2025_procesado.csv")
+write_csv(df5, ruta_procesado)
 
-tab_dev <- frecuencias(df5, developers)
-tab_pub <- frecuencias(df5, publishers)
-
-devs_frecuentes <- tab_dev |> slice_max(n_juegos, n = K_emp, with_ties = FALSE) |> pull(valor)
-pubs_frecuentes <- tab_pub |> slice_max(n_juegos, n = K_emp, with_ties = FALSE) |> pull(valor)
-
-empresas_resumen <- function(d, col, frecuentes, tabla, pref) {
-  d |>
-    select(id, valor = {{ col }}) |>
-    filter(valor != "Unknown") |>
-    separate_longer_delim(valor, delim = ", ") |>
-    distinct(id, valor) |>
-    left_join(tabla, by = "valor") |>
-    summarise(!!paste0("n_juegos_", pref) := max(n_juegos),
-              !!paste0(pref, "_top")      := as.integer(any(valor %in% frecuentes)),
-              .by = id)
-}
-
-df6 <- df5 |>
-  left_join(empresas_resumen(df5, developers, devs_frecuentes, tab_dev, "dev"), by = "id") |>
-  left_join(empresas_resumen(df5, publishers, pubs_frecuentes, tab_pub, "pub"), by = "id") |>
-  mutate(across(c(n_juegos_dev, dev_top, n_juegos_pub, pub_top), \(x) replace_na(x, 0L)))
-
-dim(df6)
+file.exists(ruta_procesado)
 ```
 
 ```{r}
-# Las 10 empresas elegidas
-tibble(developers = devs_frecuentes, publishers = pubs_frecuentes)
+#| label: verificar-procesado
+chk <- read_csv(ruta_procesado, show_col_types = FALSE)
 
-# % de juegos por categoría
-df6 |>
-  summarise(pct_dev_unknown = mean(developer_unknown) * 100,
-            pct_dev_top     = mean(dev_top) * 100,
-            pct_dev_otro    = 100 - pct_dev_unknown - pct_dev_top,
-            pct_pub_unknown = mean(publisher_unknown) * 100,
-            pct_pub_top     = mean(pub_top) * 100,
-            pct_pub_otro    = 100 - pct_pub_unknown - pct_pub_top)
+dim(chk)                          # 8963 filas y 8 columnas
+identical(names(chk), names(df5)) # mismas columnas
+sum(is.na(chk))                   # 0 NA
 ```
 
-**Interpretación:**
+### Bitácora de versiones
 
-- [Completar: las 10 empresas más frecuentes y qué % de juegos tiene al menos una de ellas.]
-- Las empresas del top 10 cubren una minoría de los juegos (en mi revisión, ≈ 14 % en developers y ≈ 31 % en publishers), así que `dev_top` y `pub_top` aportan poca señal por sí solas. Para compensar, `n_juegos_dev` y `n_juegos_pub` resumen el tamaño de todas las empresas, incluidas las pequeñas.
-- Algunas empresas del top pertenecen a la misma corporación (por ejemplo, "Electronic Arts" y "Electronic Arts Canada"). No se unificaron para no agregar reglas manuales.
+| Objeto | Qué se hizo | Filas | Columnas | NA en las variables usadas |
+|---|---|---|---|---|
+| `df` | Datos originales (sin la columna de índice) | 10,003 | 12 | |
+| `df1` | Copias exactas eliminadas; de cada `id` se conserva el registro más reciente | 8,978 | 12 | |
+| `df2` | `anio`, texto normalizado, sin pre-lanzamientos ni juegos sin plataforma | 8,963 | 14 | |
+| `df3` | Selección de columnas | 8,963 | 8 | 1,291 |
+| `df4` | Categóricas a factor, con "Unknown" y "Other" | 8,963 | 8 | 155 |
+| `df5` | `anio` imputado con la mediana | 8,963 | 8 | 0 |
 
----
+**Decisiones para el tratamiento.**
 
-### Agrupación de géneros, codificación de `era` y selección final
+- Se confirma `rating` como variable objetivo (regresión).
+- Se descartan `name`, `image`, `description`, `released` y `updated`; `id` se conserva solo como llave.
+- `suggestions_count` se conserva con reserva: su significado está por confirmar.
+- Se eliminan los 4 pre-lanzamientos y los 11 juegos sin plataforma.
+- `platforms`, `developers`, `genres` y `publishers` se convierten a factor, sin separar sus valores: los NA pasan a "Unknown" y los niveles con menos de 30 juegos se agrupan en "Other".
+- `anio` se imputa con la mediana (2013) en los 155 juegos sin fecha.
+- No se crean variables nuevas ni indicadores en esta versión; la ingeniería de características queda para la versión 2.
 
-**Decisión.** Los 19 géneros se agrupan en 4 grupos y `gen_indie` queda aparte, porque es el de mayor diferencia de rating en el paso 4 (−0.137). `n_generos` conserva el conteo completo. `era` pasa a dummies, tomando `antes_2000` como referencia. No se aplica escalado: en regresión lineal no cambia las predicciones, y si se necesita se hará en Modelado con la media y desviación de entrenamiento.
 
-| Grupo | Géneros que incluye |
-|---|---|
-| `gen_g_accion` | Action, Shooter, Fighting, Platformer, Arcade, Racing, Sports |
-| `gen_g_aventura_rol` | Adventure, RPG, Massively Multiplayer |
-| `gen_g_estrategia` | Strategy, Simulation |
-| `gen_g_casual` | Casual, Puzzle, Card, Board Games, Family, Educational |
+## Selección de modelo
 
-Los grupos son un criterio propio: se agrupó por parecido de jugabilidad, no con un método estadístico.
+### Contexto del problema
+
+Tarea: regresión. La variable objetivo es `rating` (continua, de 3.29 a 5.00, desviación estándar 0.34). Predecir siempre la media del entrenamiento da un RMSE ≈ 0.34, que es la línea base.
+
+Predictores (`df5`, 8,963 juegos): `anio` y `suggestions_count` (numéricas) y `platforms`, `developers`, `genres` y `publishers` (factores con 39, 56, 11 y 27 niveles). Al expandir los factores a variables indicadoras, un modelo lineal, un SVM o un kNN trabajan con 131 columnas.
+
+Restricción de esta versión: no se crean variables nuevas. Los modelos deben aprovechar las variables tal como están.
+
+Lo que mostró el EDA: las relaciones con `rating` son débiles (|r| ≤ 0.11), la relación con `anio` no es lineal y `rating` no tiene forma de campana (hay un hueco casi vacío entre 3.5 y 3.7).
+
+Tamaño de los datos: con unos miles de filas, según el material del curso (Preparación avanzada de datos, parte I), ningún algoritmo supera de forma predecible a los demás. Por eso conviene comparar modelos conceptualmente distintos.
+
+### Criterios de selección
+
+- Que sirvan para un objetivo continuo.
+- Que acepten predictores mixtos (numéricos y factores).
+- Que sean conceptualmente distintos entre sí.
+- Que sean estándar y de costo computacional razonable.
+- Que permitan una comparación justa: un modelo base, uno interpretable, uno flexible y uno basado en vecindad.
+
+### Modelos elegidos
+
+| | Regresión lineal múltiple | Árbol de regresión | SVM de regresión (SVR) | kNN para regresión |
+|---|---|---|---|---|
+| **Idea** | Combinación lineal de los predictores | Particiones sucesivas; cada hoja predice la media | Función suave dentro de un margen ε, con un kernel para relaciones no lineales | Predice el promedio del `rating` de los *k* juegos más parecidos del entrenamiento |
+| **Rol** | Modelo base | Modelo interpretable | Modelo flexible | Modelo local, basado en instancias |
+| **Relaciones no lineales** | No (solo si se transforma el predictor) | Sí, automáticamente | Sí, con kernel | Sí, de forma local |
+| **Interacciones** | No | Sí | Sí | Sí, implícitas en la distancia |
+| **Interpretabilidad** | Alta (coeficientes) | Alta (reglas) | Baja | Baja (solo se pueden inspeccionar los vecinos) |
+| **Factores** | Se expanden a variables indicadoras | Directos | Se expanden a variables indicadoras | Se expanden a variables indicadoras |
+| **Escalado** | No necesario | No necesario | Necesario | Indispensable (la distancia depende de la escala) |
+| **Ajuste** | Ninguno | Complejidad del árbol (cp) | C, epsilon y gamma | Número de vecinos (k) |
+
+#### Regresión lineal múltiple: modelo base
+
+**Por qué:** es el punto de referencia natural. Es rápida, estándar y sus coeficientes se interpretan directamente (el efecto de cada nivel respecto al de referencia). Si un modelo más complejo no la supera, su complejidad no se justifica.
+
+**Limitaciones:** asume linealidad y aditividad, y el EDA mostró que la relación con `anio` no es lineal. Es sensible a atípicos y a la colinealidad, y es probable que los residuos no sean normales por la forma de `rating`. Sin ingeniería de características no puede capturar curvas ni interacciones; según el curso, la regresión lineal puede igualar a modelos más complejos si se le añaden transformaciones, lo que queda para la versión 2.
+
+**A revisar:** residuos frente a valores ajustados, normalidad y homocedasticidad.
+
+#### Árbol de regresión: interpretabilidad
+
+**Por qué:** produce reglas legibles (por ejemplo, "si el año es anterior a X y el género es Y, el rating esperado es Z"). Captura relaciones no lineales e interacciones sin que se las indiquemos, lo que ayuda cuando no se permite crear variables nuevas. Usa los factores directamente, no necesita escalado ni supuestos sobre la distribución.
+
+**Limitaciones:** es inestable (pequeños cambios en los datos cambian el árbol), sobreajusta si no se poda y predice un valor constante por hoja. Los factores con muchos niveles pueden sesgar la elección de variables.
+
+**Control:** poda mediante el parámetro de complejidad cp, elegido por validación cruzada.
+
+#### SVM de regresión: flexibilidad
+
+**Por qué:** con un kernel radial modela relaciones no lineales sin fijar su forma de antemano. Su pérdida ε-insensible lo hace menos sensible a atípicos, y su parámetro de regularización C controla el sobreajuste, útil con 131 columnas y señal débil.
+
+**Limitaciones:** es poco interpretable, es más costoso de ajustar y depende de tres hiperparámetros (C, epsilon y gamma). Requiere predictores escalados y factores expandidos; la función `svm` lo hace internamente, sin modificar el dataset.
+
+**Hipótesis:** su flexibilidad podría traducirse en mayor precisión, pero no está garantizado y se verificará en el conjunto de prueba.
+
+#### kNN para regresión: vecindad
+
+**Por qué:** es un método no paramétrico que no asume ninguna forma funcional entre los predictores y `rating`. Para predecir un juego, busca los *k* juegos del entrenamiento más parecidos (según la distancia entre sus predictores) y promedia su `rating`. Esto le permite capturar relaciones no lineales e interacciones de forma local, sin que se las indiquemos, y su lógica es fácil de explicar: "juegos parecidos tienen ratings parecidos". Además, es conceptualmente distinto a los otros tres modelos, ya que no ajusta una función global, sino que guarda los datos y los consulta al predecir.
+
+**Limitaciones:** la distancia depende de la escala, por lo que los predictores numéricos deben estandarizar­se y los factores expandirse a variables indicadoras. Con 131 columnas, la mayoría indicadoras, aparece la maldición de la dimensionalidad: las distancias tienden a parecerse entre sí y los vecinos pierden significado. Además, `anio` y `suggestions_count` (las únicas numéricas) pueden quedar diluidas frente a los cientos de niveles de los factores. Todas las variables pesan igual en la distancia, incluso las poco informativas, y el modelo no ofrece coeficientes ni reglas. Con señal débil, un *k* grande tiende a promediar casi todo el entrenamiento y a predecir cerca de la media. Es más lento al predecir, porque cada predicción requiere calcular distancias contra todo el entrenamiento.
+
+**Control:** el número de vecinos *k* se elige por validación cruzada dentro del entrenamiento, probando una rejilla de valores. Un *k* pequeño da predicciones más ruidosas (sobreajuste) y uno grande las suaviza en exceso (subajuste).
+
+**Hipótesis:** dado el hueco en la distribución de `rating` y la señal débil, no se espera que supere al resto, pero sirve para comprobar si la similitud local aporta algo que los modelos globales no capturan.
+
+### Cómo se compararán
+
+- Mismo split y misma semilla para los cuatro modelos.
+- Métricas en prueba: RMSE (principal), MAE y R², comparadas con la línea base de predecir la media del entrenamiento.
+- Hiperparámetros elegidos solo con validación cruzada dentro del entrenamiento (cp en el árbol; C, epsilon y gamma en el SVR; *k* en el kNN). El conjunto de prueba se usa una sola vez.
+- Escalado de los predictores numéricos calculado solo con el entrenamiento y aplicado después al conjunto de prueba, para evitar fuga de información (especialmente importante en el kNN y el SVR).
+- Criterios complementarios: tiempo de ajuste, tiempo de predicción e interpretabilidad.
+
+### Modelos no incluidos en esta versión
+
+- **Bosques aleatorios y boosting:** el curso indica que, a tamaños medianos, los ensambles suelen superar a los algoritmos tradicionales. Son el siguiente paso natural.
+- **Redes neuronales:** se dejan fuera para mantener el alcance acotado.
+
+### Expectativas
+
+Dada la señal débil que mostró el EDA, se espera un R² bajo en los cuatro modelos y un RMSE cercano a la línea base. En particular, el kNN podría ser el más afectado por las 131 columnas, por lo que se anticipa que quede cerca de la línea base. El valor de esta versión está en medir cuánto se logra sin ingeniería de características, para compararlo con las versiones 2 y 3.
+
+### Split
+
+#### Lectura del dataset procesado
+
+Se lee el archivo guardado al final de la transformación (`Data/Processed/gaming_2025_procesado.csv`). Al guardarse en CSV, las variables categóricas pierden su tipo y regresan como texto, así que se vuelven a convertir a factor con la misma receta del EDA: los NA pasan a `"Unknown"` y los niveles con menos de 30 juegos se agrupan en `"Other"`. Como esos ajustes ya estaban aplicados en el archivo, la conversión solo restituye el tipo factor y no cambia ningún valor. El criterio no usa `rating`.
 
 ```{r}
-grupos_gen <- list(
-  gen_g_accion       = c("gen_action", "gen_shooter", "gen_fighting", "gen_platformer",
-                         "gen_arcade", "gen_racing", "gen_sports"),
-  gen_g_aventura_rol = c("gen_adventure", "gen_rpg", "gen_massively_multiplayer"),
-  gen_g_estrategia   = c("gen_strategy", "gen_simulation"),
-  gen_g_casual       = c("gen_casual", "gen_puzzle", "gen_card", "gen_board_games",
-                         "gen_family", "gen_educational")
+#| label: carga-procesado
+ruta_procesado <- here("Data", "Processed", "gaming_2025_procesado.csv")
+
+df_modelo <- read_csv(ruta_procesado, show_col_types = FALSE) |>
+  mutate(across(c(platforms, genres, developers, publishers),
+                \(x) x |> factor() |>
+                  fct_na_value_to_level("Unknown") |>
+                  fct_lump_min(30, other_level = "Other")))
+```
+
+Verificación: el dataset debe coincidir con `df5` (8,963 filas y 8 columnas, sin NA) y los factores deben conservar sus niveles.
+
+```{r}
+#| label: verificacion-carga
+dim(df_modelo)
+sum(is.na(df_modelo))
+
+# Tipos
+df_modelo |>
+  summarise(across(everything(), \(x) class(x)[1])) |>
+  pivot_longer(everything(), names_to = "variable", values_to = "clase")
+
+# Niveles por factor
+df_modelo |>
+  summarise(across(c(platforms, genres, developers, publishers), nlevels))
+```
+
+Resultado esperado: 8,963 filas, 8 columnas, 0 NA y 39, 56, 11 y 27 niveles en `platforms`, `genres`, `developers` y `publishers`, respectivamente.
+
+#### División en entrenamiento y prueba
+
+Se usa una partición aleatoria simple 80/20 con semilla fija, de modo que los cuatro modelos se ajusten y evalúen sobre exactamente los mismos datos. La variable `id` se conserva solo para identificar los juegos y no se usa como predictor.
+
+```{r}
+#| label: split
+set.seed(123)
+
+n <- nrow(df_modelo)
+idx_train <- sample(n, size = floor(0.8 * n))
+
+train <- df_modelo[idx_train, ]
+test  <- df_modelo[-idx_train, ]
+
+c(train = nrow(train), test = nrow(test))
+```
+
+#### Verificación del split
+
+Se comprueba que ambos conjuntos tengan una distribución de `rating` parecida y que ningún nivel de los factores quede sin juegos en el entrenamiento (un nivel ausente en entrenamiento no podría estimarse y generaría errores al predecir).
+
+```{r}
+#| label: verificacion-split
+# Distribución del objetivo en cada conjunto
+bind_rows(
+  train = summarise(train, n = n(), media = mean(rating), de = sd(rating)),
+  test  = summarise(test,  n = n(), media = mean(rating), de = sd(rating)),
+  .id = "conjunto"
 )
 
-for (g in names(grupos_gen)) {
-  df6[[g]] <- as.integer(rowSums(df6[grupos_gen[[g]]]) > 0)
-}
-
-# Ningún género debe quedar sin asignar (debe dar character(0))
-setdiff(grep("^gen_[a-z]", names(df6), value = TRUE),
-        c(unlist(grupos_gen), "gen_indie", names(grupos_gen)))
+# Niveles sin ningún juego en entrenamiento (deben ser 0)
+train |>
+  summarise(across(c(platforms, genres, developers, publishers),
+                   \(x) sum(table(x) == 0)))
 ```
+
+#### Línea base en prueba
+
+Con este split se calcula la línea base: predecir siempre la media del entrenamiento. Es la referencia contra la que se compararán los cuatro modelos.
 
 ```{r}
-for (l in levels(df6$era)[-1]) {
-  df6[[paste0("era_", l)]] <- as.integer(df6$era == l)
-}
-
-df_modelo <- df6 |>
-  select(id, rating,
-         suggestions_count, edad_juego, n_generos, n_plataformas, n_juegos_dev, n_juegos_pub,
-         anio_na, genero_na, developer_unknown, publisher_unknown, autopublicado,
-         dev_top, pub_top,
-         gen_indie, starts_with("gen_g_"),
-         starts_with("pf_"),
-         starts_with("era_"))
-
-dim(df_modelo)
+#| label: linea-base
+rmse_base <- sqrt(mean((test$rating - mean(train$rating))^2))
+rmse_base
 ```
 
-**Variables descartadas:**
+#### Validación cruzada dentro del entrenamiento
 
-- `n_familias`, `solo_pc` y `multiplataforma` se derivan de `pf_*` y `n_plataformas`. En particular, `n_familias` es exactamente la suma de las `pf_*` y provocaría colinealidad perfecta.
-- `anio` se elimina porque `edad_juego = 2025 − anio`.
-- Las 19 columnas `gen_*` se sustituyen por los 4 grupos más `gen_indie`.
-- `platforms`, `genres`, `developers`, `publishers`, `era` y `anio` ya están codificadas o resumidas.
-
-**Diccionario del dataset final** (30 columnas: `id` como llave, `rating` como objetivo y 28 predictoras):
-
-| Bloque | Variables | Cómo se construyó |
-|---|---|---|
-| Numéricas | `suggestions_count` | Original (se conserva con reserva, ver EDA) |
-| | `edad_juego` | 2025 − `anio` (con `anio` imputado) |
-| | `n_generos`, `n_plataformas` | Número de géneros / plataformas del juego |
-| | `n_juegos_dev`, `n_juegos_pub` | Mayor número de juegos entre sus empresas |
-| Faltantes | `anio_na`, `genero_na`, `developer_unknown`, `publisher_unknown` | 1 si el dato faltaba |
-| | `autopublicado` | 1 si developers = publishers; 0 si no coinciden o falta alguno |
-| Empresas | `dev_top`, `pub_top` | 1 si alguna empresa está entre las 10 con más juegos |
-| Género | `gen_indie` | 1 si el juego es Indie |
-| | `gen_g_accion`, `gen_g_aventura_rol`, `gen_g_estrategia`, `gen_g_casual` | 1 si tiene algún género del grupo |
-| Plataforma | `pf_playstation`, `pf_xbox`, `pf_nintendo`, `pf_pc`, `pf_movil`, `pf_sega`, `pf_otras` | 1 si está en alguna plataforma de la familia |
-| Tiempo | `era_2000_2009`, `era_2010_2019`, `era_2020_mas` | Dummies de `era` (referencia: `antes_2000`) |
-
-**Interpretación:**
-
-- [Completar: dimensiones de `df_modelo`; deben ser 8,963 filas y 30 columnas.]
-- El dataset pasó de ≈ 95 columnas posibles (una por género, plataforma y empresa) a 28 predictoras, con una variable por idea y todas con un significado directo.
-- El costo es que ya no se distingue entre empresas específicas ni entre géneros dentro de un mismo grupo. Con correlaciones individuales cercanas a 0.1, se espera que el efecto en el modelo sea pequeño.
-
----
-
-### Validación del tratamiento
+Para elegir hiperparámetros (cp en el árbol; C, epsilon y gamma en el SVR; *k* en el kNN) se usa validación cruzada de 10 pliegues solo sobre `train`. Los pliegues se definen una vez y se reutilizan en todos los modelos para que la comparación sea justa. El conjunto de prueba no interviene en esta etapa y se usa una sola vez, al final.
 
 ```{r}
-sum(is.na(df_modelo))   # debe dar 0
+#| label: folds
+set.seed(123)
+folds <- sample(rep(1:10, length.out = nrow(train)))
 
-# Columnas constantes (no debe haber ninguna)
-df_modelo |>
-  summarise(across(everything(), n_distinct)) |>
-  pivot_longer(everything(), names_to = "variable", values_to = "valores_distintos") |>
-  filter(valores_distintos == 1)
-
-# Todo numérico
-sapply(df_modelo, class) |> table()
-
-df_status(df_modelo) |> filter(q_na > 0)
+table(folds)
 ```
 
-Bitácora de decisiones:
+### Modelado
 
-| Paso | Acción | Filas antes | Filas después | Columnas |
-|---|---|---|---|---|
-| 2 | Limpieza | 8,978 | 8,963 | 12 |
-| 3 | Selección | 8,963 | 8,963 | 8 |
-| 4 | Características | 8,963 | 8,963 | 42 |
-| 5 | Faltantes (indicadores y "Unknown") | 8,963 | 8,963 | 46 |
-| 6 | Imputación de `anio` (mediana global) | 8,963 | 8,963 | 46 |
-| 7 | Resumen de developers y publishers | 8,963 | 8,963 | 50 |
-| 8 | Géneros agrupados, `era` a dummies, selección final | 8,963 | 8,963 | 30 |
+Los modelos se ajustan con la librería `caret`, solo con el conjunto de entrenamiento. En esta sección únicamente se entrenan; la evaluación de métricas se hace en una sección posterior.
 
-**Interpretación:**
+#### Configuración común
 
-- [Completar: 0 NA, sin columnas constantes y todas las variables numéricas. Verifica con `dim()` que las columnas de la bitácora coinciden con tus resultados.]
--
+Se usa la misma fórmula para ambos modelos. La variable `id` queda fuera de los predictores. Las variables categóricas son factores, por lo que `caret` las expande internamente a variables indicadoras sin modificar el dataset.
+
+Los hiperparámetros se eligen con validación cruzada de 10 pliegues dentro de `train`, reutilizando los pliegues definidos en el Split (`folds`). Así ambos modelos se remuestrean sobre las mismas particiones y su comparación es justa.
+
+```{r}
+#| label: config-caret
+formula_modelo <- rating ~ anio + suggestions_count +
+  platforms + genres + developers + publishers
+
+# Mismos pliegues del Split, en el formato que espera caret
+index_cv    <- lapply(1:10, \(k) which(folds != k))
+indexOut_cv <- lapply(1:10, \(k) which(folds == k))
+
+ctrl <- trainControl(
+  method   = "cv",
+  number   = 10,
+  index    = index_cv,
+  indexOut = indexOut_cv
+)
+```
+
+#### Regresión múltiple
+
+No tiene hiperparámetros que ajustar. El modelo se estima sobre todo el entrenamiento y la validación cruzada solo registra su desempeño en cada pliegue para la comparación posterior.
+
+```{r}
+#| label: modelo-lm
+set.seed(123)
+modelo_lm <- train(
+  formula_modelo,
+  data      = train,
+  method    = "lm",
+  trControl = ctrl
+)
+```
+
+Verificación: el modelo debe tener 132 coeficientes (intercepto, 2 numéricas y 129 indicadoras) y ninguno debe quedar sin estimar por colinealidad perfecta.
+
+```{r}
+#| label: verificacion-lm
+length(coef(modelo_lm$finalModel))
+sum(is.na(coef(modelo_lm$finalModel)))
+```
+
+#### kNN para regresión
+
+Como `rating` es numérico, `caret` ajusta kNN en modo regresión: la predicción es el promedio del `rating` de los *k* vecinos más cercanos. La distancia depende de la escala, así que los predictores se centran y escalan con `preProcess`. Dentro de la validación cruzada, `caret` calcula el centrado y el escalado solo con los datos de cada pliegue de entrenamiento, evitando fuga de información.
+
+El número de vecinos *k* se elige por validación cruzada sobre una rejilla de valores. Se incluyen valores grandes porque, con señal débil y 131 columnas, un *k* alto suele ser necesario para estabilizar el promedio.
+
+```{r}
+#| label: modelo-knn
+set.seed(123)
+modelo_knn <- train(
+  formula_modelo,
+  data       = train,
+  method     = "knn",
+  preProcess = c("center", "scale"),
+  tuneGrid   = expand.grid(k = c(3, 5, 7, 9, 11, 15, 21, 31, 41, 51, 71, 101, 151)),
+  trControl  = ctrl
+)
+```
+
+Valor de *k* seleccionado y curva de ajuste del hiperparámetro:
+
+```{r}
+#| label: ajuste-knn
+modelo_knn$bestTune
+plot(modelo_knn)
+```
+
+Si el mejor *k* queda en el extremo de la rejilla, se amplía el rango y se vuelve a ajustar.
+
+#### SVM de regresión
+
+Se usa un kernel radial (`svmRadial`, de la librería `kernlab`) con tres hiperparámetros: el costo `C`, el parámetro del kernel `sigma` (equivalente al `gamma` de la sección de modelos) y el margen `epsilon`. `caret` ajusta `C` y `sigma` en su rejilla, pero no `epsilon`, así que se recorre manualmente: se entrena un modelo por cada `epsilon` con la misma rejilla y los mismos pliegues, y se conserva el que tenga menor RMSE en validación cruzada.
+
+`ksvm` estandariza internamente las variables no binarias y, en regresión, también el objetivo, por lo que `epsilon` está expresado en la escala estandarizada de `rating`. El dataset no se modifica.
+
+```{r}
+#| label: modelo-svm
+grid_svm <- expand.grid(
+  sigma = c(0.001, 0.005, 0.02),
+  C     = c(0.5, 1, 4)
+)
+epsilons <- c(0.1, 0.2, 0.4)
+
+resultados_svm <- list()
+for (e in epsilons) {
+  set.seed(123)
+  resultados_svm[[as.character(e)]] <- train(
+    formula_modelo,
+    data      = train,
+    method    = "svmRadial",
+    tuneGrid  = grid_svm,
+    trControl = ctrl,
+    epsilon   = e
+  )
+}
+```
+Selección del `epsilon` y de la combinación (`sigma`, `C`) con menor RMSE en validación cruzada:
+
+```{r}
+#| label: ajuste-svm
+rmse_cv_svm <- sapply(resultados_svm, \(m) min(m$results$RMSE))
+rmse_cv_svm
+
+eps_opt    <- names(which.min(rmse_cv_svm))
+modelo_svm <- resultados_svm[[eps_opt]]
+
+eps_opt
+modelo_svm$bestTune
+plot(modelo_svm)
+```
+
+Si los mejores valores quedan en un extremo de las rejillas, se amplían los rangos y se vuelve a ajustar.
