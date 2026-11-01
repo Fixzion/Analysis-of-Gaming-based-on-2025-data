@@ -14,6 +14,7 @@ execute:
 ```{r}
 library(caret)
 library(rpart)
+library(e1071)
 library(rpart.plot)
 library(tidyverse)
 library(ggplot2)
@@ -441,7 +442,7 @@ df2 |> summarise(media = mean(rating), sd = sd(rating))
 ### Selección de columnas
 
 | Variable | Decisión | Motivo |
-|-----------------|-----------------|--------------------------------------|
+|------------------|------------------|-------------------------------------|
 | id | Conservar como llave | Permite volver a df1; no es predictora |
 | rating | Variable objetivo | No se imputa ni se transforma |
 | anio, suggestions_count | Predictoras numéricas | anio reemplaza a released |
@@ -464,8 +465,8 @@ glimpse(df3)
 
 `platforms`, `developers`, `genres` y `publishers` guardan varios valores por celda. Convertirlas a factor tal cual crea un nivel por cada combinación, con demasiados niveles de un solo juego y niveles de prueba que no existen en entrenamiento:
 
-| Variable | Niveles si se convierte tal cual | % de niveles con un solo juego | % de un conjunto de prueba con nivel nuevo |
-|---|---|---|---|
+| Variable | Niveles si se convierte tal cual | \% de niveles con un solo juego | \% de un conjunto de prueba con nivel nuevo |
+|------------------|------------------|------------------|------------------|
 | `platforms` | 2,764 | 80.9 | 25.5 |
 | `genres` | 676 | 44.7 | 4.1 |
 | `developers` | 5,147 | 80.5 | 52.3 |
@@ -511,12 +512,12 @@ colSums(is.na(df4))
 
 **Resultado.**
 
-| Variable | Niveles | % en "Other" | Juegos en "Unknown" |
-|---|---|---|---|
-| `platforms` | 39 | 51.3 | 0 |
-| `genres` | 56 | 25.9 | 366 |
-| `developers` | 11 | 89.5 | 273 |
-| `publishers` | 27 | 65.2 | 499 |
+| Variable     | Niveles | \% en "Other" | Juegos en "Unknown" |
+|--------------|---------|---------------|---------------------|
+| `platforms`  | 39      | 51.3          | 0                   |
+| `genres`     | 56      | 25.9          | 366                 |
+| `developers` | 11      | 89.5          | 273                 |
+| `publishers` | 27      | 65.2          | 499                 |
 
 Todos los niveles conservados tienen al menos 30 juegos. Solo queda NA en `anio` (155). En `developers` y `publishers` el recuento de "Unknown" supera en uno a los NA (273 frente a 272 y 499 frente a 498): probablemente ya existía un juego con el valor literal "Unknown".
 
@@ -557,7 +558,6 @@ colSums(is.na(df5))
 identical(names(df4), names(df5))
 ```
 
-
 **Resultado.**
 
 - La mediana es 2013. Los 155 juegos sin fecha toman ese año y `anio` pasa a tipo entero.
@@ -595,10 +595,10 @@ sum(is.na(chk))                   # 0 NA
 ### Bitácora de versiones
 
 | Objeto | Qué se hizo | Filas | Columnas | NA en las variables usadas |
-|---|---|---|---|---|
-| `df` | Datos originales (sin la columna de índice) | 10,003 | 12 | |
-| `df1` | Copias exactas eliminadas; de cada `id` se conserva el registro más reciente | 8,978 | 12 | |
-| `df2` | `anio`, texto normalizado, sin pre-lanzamientos ni juegos sin plataforma | 8,963 | 14 | |
+|---------------|---------------|---------------|---------------|---------------|
+| `df` | Datos originales (sin la columna de índice) | 10,003 | 12 |  |
+| `df1` | Copias exactas eliminadas; de cada `id` se conserva el registro más reciente | 8,978 | 12 |  |
+| `df2` | `anio`, texto normalizado, sin pre-lanzamientos ni juegos sin plataforma | 8,963 | 14 |  |
 | `df3` | Selección de columnas | 8,963 | 8 | 1,291 |
 | `df4` | Categóricas a factor, con "Unknown" y "Other" | 8,963 | 8 | 155 |
 | `df5` | `anio` imputado con la mediana | 8,963 | 8 | 0 |
@@ -613,7 +613,6 @@ sum(is.na(chk))                   # 0 NA
 - `anio` se imputa con la mediana (2013) en los 155 juegos sin fecha.
 - No se crean variables nuevas ni indicadores en esta versión; la ingeniería de características queda para la versión 2.
 
-
 ## Selección de modelo
 
 ### Contexto del problema
@@ -624,7 +623,7 @@ Predictores (`df5`, 8,963 juegos): `anio` y `suggestions_count` (numéricas) y `
 
 Restricción de esta versión: no se crean variables nuevas. Los modelos deben aprovechar las variables tal como están.
 
-Lo que mostró el EDA: las relaciones con `rating` son débiles (|r| ≤ 0.11), la relación con `anio` no es lineal y `rating` no tiene forma de campana (hay un hueco casi vacío entre 3.5 y 3.7).
+Lo que mostró el EDA: las relaciones con `rating` son débiles (\|r\| ≤ 0.11), la relación con `anio` no es lineal y `rating` no tiene forma de campana (hay un hueco casi vacío entre 3.5 y 3.7).
 
 Tamaño de los datos: con unos miles de filas, según el material del curso (Preparación avanzada de datos, parte I), ningún algoritmo supera de forma predecible a los demás. Por eso conviene comparar modelos conceptualmente distintos.
 
@@ -638,8 +637,8 @@ Tamaño de los datos: con unos miles de filas, según el material del curso (Pre
 
 ### Modelos elegidos
 
-| | Regresión lineal múltiple | Árbol de regresión | SVM de regresión (SVR) | kNN para regresión |
-|---|---|---|---|---|
+|   | Regresión lineal múltiple | Árbol de regresión | SVM de regresión (SVR) | kNN para regresión |
+|---------------|---------------|---------------|---------------|---------------|
 | **Idea** | Combinación lineal de los predictores | Particiones sucesivas; cada hoja predice la media | Función suave dentro de un margen ε, con un kernel para relaciones no lineales | Predice el promedio del `rating` de los *k* juegos más parecidos del entrenamiento |
 | **Rol** | Modelo base | Modelo interpretable | Modelo flexible | Modelo local, basado en instancias |
 | **Relaciones no lineales** | No (solo si se transforma el predictor) | Sí, automáticamente | Sí, con kernel | Sí, de forma local |
@@ -873,46 +872,677 @@ plot(modelo_knn)
 
 Si el mejor *k* queda en el extremo de la rejilla, se amplía el rango y se vuelve a ajustar.
 
+#### Árbol de regresión
+
+El árbol se ajusta directamente con `rpart`, que maneja los factores de forma nativa y no necesita escalado. Para mantenerlo simple y legible no se hace poda ni validación cruzada: se limita su tamaño con una profundidad máxima de 4 niveles y un parámetro de complejidad `cp` bajo, de modo que el árbol no se reduzca a un solo nodo con una señal tan débil.
+
+```{r}
+#| label: modelo-arbol
+modelo_tree <- rpart(
+  formula_modelo,
+  data    = train,
+  method  = "anova",
+  control = rpart.control(cp = 0.002, maxdepth = 4)
+)
+```
+
+Cada nodo del gráfico muestra el `rating` predicho (media de la hoja), el número de juegos y el porcentaje del entrenamiento que contiene.
+
+```{r}
+#| label: grafica-arbol
+#| fig-width: 14
+#| fig-height: 8
+
+# Acorta las etiquetas largas de los cortes con factores
+recortar <- function(x, labs, digits, varlen, faclen) {
+  ifelse(nchar(labs) > 15, paste0(substr(labs, 1, 15), "..."), labs)
+}
+
+# 1) Versión guardada en archivo (tamaño grande)
+png("arbol_regresion.png", width = 3000, height = 1800, res = 200)
+rpart.plot(
+  modelo_tree,
+  type = 4, extra = 101,
+  box.palette = "GnBu",
+  split.fun = recortar,
+  faclen = 0,
+  cex = 0.6
+)
+dev.off()
+
+# 2) Versión en el documento
+rpart.plot(
+  modelo_tree,
+  type = 4, extra = 101,
+  box.palette = "GnBu",
+  split.fun = recortar,
+  faclen = 0,
+  cex = 0.6
+)
+```
+
+#### Interpretación del árbol
+
+El árbol tiene 12 hojas y varias de sus ramas llegaron a la profundidad máxima permitida (4 niveles). En el gráfico, cada nodo muestra el `rating` promedio de los juegos de entrenamiento que caen en él (redondeado a un decimal, por lo que "4" equivale a 4.0), el número de juegos y el porcentaje del entrenamiento. En cada corte, la rama izquierda corresponde a los casos que cumplen la condición.
+
+**Variables que intervienen**
+
+- **`genres`:** es el primer corte, es decir, la división que más reduce el error. Separa los juegos en dos grupos de géneros de tamaño parecido: uno con rating promedio de 3.8 (49% de los juegos) y otro de 4.0 (51%). Vuelve a aparecer en un nodo más profundo, con un efecto pequeño.
+- **`publishers`:** aparece tres veces y siempre en el mismo sentido: el grupo de editores que incluye nombres como Atari, Atlus o Bethesda obtiene ratings más altos que el grupo que incluye a 2K (4.0 frente a 3.8, 4.2 frente a 3.9 y 4.0 frente a 3.9).
+- **`anio`:** aparece en tres cortes, con efectos que dependen del grupo. En los juegos del grupo de géneros de 3.8, los lanzados antes de 2007 tienen más rating (4.0) que los posteriores (3.8). En otro grupo ocurre algo parecido con el corte de 2005 (4.0 antes y 3.9 después). Sin embargo, en el grupo de mayor rating, los juegos anteriores a 1991 tienen rating más bajo (3.8) que los posteriores (4.1). Esto es coherente con la relación no lineal entre año y rating que mostró el EDA.
+- **`platforms`:** separa grupos de plataformas en tres cortes de nivel inferior, con diferencias de 0.1 a 0.2 puntos y agrupaciones distintas en cada rama, por lo que no hay un patrón único.
+- **`suggestions_count`:** no aparece en ningún corte, así que, con esta configuración, no aporta a la predicción.
+
+**Grupos extremos**
+
+- **Rating más bajo (3.8):** el grupo más grande del árbol, con 2,381 juegos (33% del entrenamiento): género del primer grupo, lanzados en 2007 o después, de editores del grupo de 2K y en plataformas del grupo de Mac. Es el perfil más común y el de menor rating.
+- **Rating más alto (4.1 a 4.2):** destacan dos hojas. La más grande tiene 1,092 juegos (15%): géneros del segundo grupo, editores del grupo de Atlus/Bethesda, plataformas del grupo de Game Boy Advance y lanzados en 1991 o después. La de mayor rating (4.2) es muy pequeña: 49 juegos (1%).
+
+**Alcance y precauciones**
+
+- Las predicciones del árbol están en un rango estrecho (3.8 a 4.2) frente a una desviación estándar de 0.34, lo que confirma la señal débil que ya mostró el EDA. Las diferencias entre grupos son de entre 0.1 y 0.4 puntos.
+- Varias hojas tienen muy pocos juegos (28, 48, 49 y 105), por lo que sus promedios son poco estables y no conviene interpretarlos de forma individual.
+- El tamaño del árbol se fijó a mano (profundidad máxima y `cp`) y no se eligió por validación cruzada, de modo que es una descripción interpretable de patrones en el entrenamiento y no necesariamente el árbol óptimo.
+- Las relaciones son asociaciones observadas en los datos y no implican causalidad. La capacidad predictiva del modelo se evalúa en la sección de evaluación con el conjunto de prueba.
+
 #### SVM de regresión
 
-Se usa un kernel radial (`svmRadial`, de la librería `kernlab`) con tres hiperparámetros: el costo `C`, el parámetro del kernel `sigma` (equivalente al `gamma` de la sección de modelos) y el margen `epsilon`. `caret` ajusta `C` y `sigma` en su rejilla, pero no `epsilon`, así que se recorre manualmente: se entrena un modelo por cada `epsilon` con la misma rejilla y los mismos pliegues, y se conserva el que tenga menor RMSE en validación cruzada.
+El SVM se ajusta directamente con `svm` de la librería `e1071` (regresión ε), con kernel radial. Se eligió ese kernel por estas razones:
 
-`ksvm` estandariza internamente las variables no binarias y, en regresión, también el objetivo, por lo que `epsilon` está expresado en la escala estandarizada de `rating`. El dataset no se modifica.
+- Un kernel lineal produciría una función lineal en los predictores, muy parecida a la regresión múltiple, y no aportaría un modelo conceptualmente distinto.
+- Un kernel polinomial añade un hiperparámetro más (el grado) y es numéricamente menos estable.
+- El radial captura relaciones no lineales sin fijar su forma de antemano y solo añade un hiperparámetro respecto al lineal (`gamma`).
+
+Para que el entrenamiento sea rápido, el ajuste se simplifica en tres puntos:
+
+- **`epsilon` fijo en 0.2.** En el ajuste previo con `caret`, el RMSE de validación cruzada fue prácticamente igual para 0.1, 0.2 y 0.4 (0.3276, 0.3273 y 0.3276), así que no se vuelve a ajustar.
+- **Rejilla pequeña** de `cost` y `gamma` (6 combinaciones), centrada en la zona que resultó mejor antes (`gamma` ≈ 0.005 y `cost` ≈ 0.5).
+- **Validación cruzada con un subconjunto de los pliegues** definidos en el Split (los primeros 3 de 10), suficiente para elegir entre 6 combinaciones. Se puede aumentar a los 10 si se dispone de tiempo.
+
+`svm` estandariza internamente los predictores y el objetivo, por lo que `epsilon` está en la escala estandarizada de `rating`, y expande los factores a variables indicadoras con la interfaz de fórmula. El dataset no se modifica.
+
+```{r}
+#| label: cv-svm
+rmse <- function(obs, pred) sqrt(mean((obs - pred)^2))
+
+# Pliegues usados para elegir hiperparámetros (subir a 1:10 para usar todos)
+folds_usar <- 1:3
+
+cv_svr <- function(cost, gamma, epsilon = 0.2) {
+  errores <- sapply(folds_usar, \(k) {
+    m <- svm(
+      formula_modelo,
+      data      = train[folds != k, ],
+      type      = "eps-regression",
+      kernel    = "radial",
+      cost      = cost,
+      gamma     = gamma,
+      epsilon   = epsilon,
+      cachesize = 500
+    )
+    rmse(train$rating[folds == k], predict(m, train[folds == k, ]))
+  })
+  mean(errores)
+}
+
+grid_svm <- expand.grid(
+  cost  = c(0.25, 0.5, 1),
+  gamma = c(0.003, 0.01)
+)
+
+tiempo_cv_svm <- system.time(
+  grid_svm$rmse_cv <- sapply(
+    seq_len(nrow(grid_svm)),
+    \(i) cv_svr(grid_svm$cost[i], grid_svm$gamma[i])
+  )
+)
+
+grid_svm
+tiempo_cv_svm["elapsed"]
+```
+
+Combinación con menor RMSE en validación cruzada:
+
+```{r}
+#| label: seleccion-svm
+mejor_svm <- grid_svm[which.min(grid_svm$rmse_cv), ]
+mejor_svm
+```
+
+Si la mejor combinación queda en un extremo de la rejilla, se amplía el rango y se vuelve a ajustar.
+
+El modelo final se entrena con todo el conjunto de entrenamiento y los hiperparámetros elegidos:
 
 ```{r}
 #| label: modelo-svm
-grid_svm <- expand.grid(
-  sigma = c(0.001, 0.005, 0.02),
-  C     = c(0.5, 1, 4)
+modelo_svm <- svm(
+  formula_modelo,
+  data      = train,
+  type      = "eps-regression",
+  kernel    = "radial",
+  cost      = mejor_svm$cost,
+  gamma     = mejor_svm$gamma,
+  epsilon   = 0.2,
+  cachesize = 500
 )
-epsilons <- c(0.1, 0.2, 0.4)
 
-resultados_svm <- list()
-for (e in epsilons) {
-  set.seed(123)
-  resultados_svm[[as.character(e)]] <- train(
-    formula_modelo,
-    data      = train,
-    method    = "svmRadial",
-    tuneGrid  = grid_svm,
-    trControl = ctrl,
-    epsilon   = e
-  )
-}
+# Número de vectores de soporte (de 7,170 observaciones)
+modelo_svm$tot.nSV
 ```
-Selección del `epsilon` y de la combinación (`sigma`, `C`) con menor RMSE en validación cruzada:
+
+## Evaluación de los modelos
+
+### Regresión múltiple
 
 ```{r}
-#| label: ajuste-svm
-rmse_cv_svm <- sapply(resultados_svm, \(m) min(m$results$RMSE))
-rmse_cv_svm
+#| label: evaluacion-lm
+# Función reutilizable para los demás modelos
+evaluar <- function(pred, nombre, obs = test$rating) {
+  tibble(
+    modelo = nombre,
+    RMSE   = sqrt(mean((obs - pred)^2)),
+    MAE    = mean(abs(obs - pred)),
+    R2     = 1 - sum((obs - pred)^2) / sum((obs - mean(train$rating))^2),
+    R2_cor = cor(obs, pred)^2,
+    mejora_RMSE_pct = 100 * (1 - RMSE / rmse_base)
+  )
+}
 
-eps_opt    <- names(which.min(rmse_cv_svm))
-modelo_svm <- resultados_svm[[eps_opt]]
+pred_lm <- predict(modelo_lm, newdata = test)
 
-eps_opt
-modelo_svm$bestTune
-plot(modelo_svm)
+resultados_test <- evaluar(pred_lm, "Regresión múltiple")
+resultados_test
 ```
 
-Si los mejores valores quedan en un extremo de las rejillas, se amplían los rangos y se vuelve a ajustar.
+```{r}
+#| label: clases-rating
+cortes <- quantile(train$rating, probs = c(1/3, 2/3))
+cortes
+
+a_clase <- function(x) {
+  cut(x, breaks = c(-Inf, cortes, Inf), labels = c("Bajo", "Medio", "Alto"))
+}
+
+obs_clase  <- a_clase(test$rating)
+pred_clase <- a_clase(pred_lm)
+
+# Distribución de las clases observadas y predichas
+table(Observado = obs_clase)
+table(Predicho = pred_clase)
+```
+
+```{r}
+#| label: matriz-confusion-lm
+cm_lm <- confusionMatrix(data = pred_clase, reference = obs_clase)
+cm_lm$table
+```
+
+```{r}
+#| label: metricas-clasificacion-lm
+# Globales: Accuracy, Kappa, intervalo de confianza, tasa de no información, etc.
+round(cm_lm$overall, 4)
+
+# Por clase: sensibilidad, especificidad, valores predictivos, F1, etc.
+round(cm_lm$byClass, 4)
+
+# Reporte completo de caret
+cm_lm
+```
+
+**Clases utilizadas.** Los cortes de los terciles del entrenamiento son 3.80 y 4.08, de modo que las clases son Bajo (`rating` ≤ 3.80), Medio (entre 3.80 y 4.08) y Alto (\> 4.08). En `test` las clases observadas quedan casi balanceadas: 608 juegos Bajo (33.9%), 559 Medio (31.2%) y 626 Alto (34.9%), sobre 1,793 juegos.
+
+**Distribución de las predicciones.** El modelo predice la clase Medio en 1,378 juegos (76.9%), Bajo en 271 (15.1%) y Alto en solo 144 (8.0%). Es el comportamiento esperado de una regresión con señal débil: sus predicciones se contraen hacia la media del `rating`, y casi todas caen en la clase central.
+
+**Matriz de confusión**
+
+| Predicción  Observado | Bajo | Medio | Alto |
+|-----------------------|------|-------|------|
+| **Bajo**              | 143  | 72    | 56   |
+| **Medio**             | 441  | 449   | 488  |
+| **Alto**              | 24   | 38    | 82   |
+
+Los aciertos están en la diagonal (143 + 449 + 82 = 674 de 1,793). Los errores se concentran en la fila de Medio: 441 juegos de rating bajo y 488 de rating alto fueron clasificados como Medio. De los 1,119 errores, 1,039 (93%) son entre clases adyacentes y solo 80 (7%) son entre extremos (Bajo clasificado como Alto o al revés). Es decir, cuando el modelo se equivoca, normalmente lo hace por una clase, lo que es coherente con la contracción hacia la media.
+
+**Métricas globales**
+
+| Métrica | Valor | Lectura |
+|------------------------|------------------------|------------------------|
+| Exactitud (*accuracy*) | 0.376 (IC 95%: 0.353 a 0.399) | Acierta 3 de cada 8 juegos |
+| Tasa de no información (NIR) | 0.349 | Exactitud de predecir siempre la clase más frecuente (Alto) |
+| p-valor (exactitud \> NIR) | 0.0096 | Mejora estadísticamente significativa |
+| Kappa | 0.084 | Acuerdo "leve" por encima del azar (0 es azar y 1 es acuerdo perfecto) |
+| Prueba de McNemar | p \< 2.2e-16 | Los errores no son simétricos (sesgo hacia la clase Medio) |
+
+- La exactitud de 0.376 supera a la de predecir siempre la clase más frecuente (0.349) y a la del azar entre tres clases (0.333), y el intervalo de confianza excluye la NIR. Sin embargo, la ventaja es de solo unos 2.7 puntos porcentuales sobre la NIR, así que es significativa pero de poca importancia práctica.
+- El kappa de 0.084 confirma que el acuerdo con las clases reales es apenas superior al azar.
+- La prueba de McNemar significativa señala que el patrón de errores es sistemáticamente asimétrico, algo que ya se veía en la matriz: el modelo manda hacia Medio a los juegos de los extremos.
+
+**Métricas por clase**
+
+| Métrica                               | Bajo  | Medio | Alto  |
+|---------------------------------------|-------|-------|-------|
+| Sensibilidad (recall)                 | 0.235 | 0.803 | 0.131 |
+| Especificidad                         | 0.892 | 0.247 | 0.947 |
+| Valor predictivo positivo (precisión) | 0.528 | 0.326 | 0.569 |
+| Valor predictivo negativo             | 0.695 | 0.735 | 0.670 |
+| F1                                    | 0.325 | 0.464 | 0.213 |
+| Prevalencia                           | 0.339 | 0.312 | 0.349 |
+| Tasa de detección                     | 0.080 | 0.250 | 0.046 |
+| Prevalencia de detección              | 0.151 | 0.769 | 0.080 |
+| Exactitud balanceada                  | 0.564 | 0.525 | 0.539 |
+
+- **Bajo y Alto:** el modelo los detecta poco (sensibilidad de 0.24 y 0.13) pero, cuando los predice, acierta bastante más que el azar: el 53% de los juegos que clasifica como Bajo y el 57% de los que clasifica como Alto lo son de verdad, frente a prevalencias de 34% y 35%. Es decir, las predicciones extremas son más informativas de lo que sugiere la exactitud global, pero son pocas (solo el 23% de las predicciones). La especificidad alta (0.89 y 0.95) es consecuencia de predecir rara vez estas clases y no un mérito del modelo.
+- **Medio:** su sensibilidad de 0.80 es engañosa. Se debe a que el modelo predice Medio con mucha frecuencia (77% de las veces), no a que distinga bien esa clase: la precisión es solo 0.33 (prácticamente la prevalencia de la clase) y la especificidad es 0.25.
+- **Resumen:** el F1 promedio de las tres clases es 0.334 y la exactitud balanceada promedio es 0.543, apenas por encima de 0.5 (azar). La clase con mejor F1 es Medio (0.464) y la peor es Alto (0.213), pero la diferencia refleja el sesgo hacia la clase central.
+
+**Limitaciones de esta evaluación**
+
+- La discretización en terciles descarta información: un error de 0.01 en el borde de un corte cuenta igual que uno de 1.0, y un juego de rating 3.81 y otro de 4.07 quedan en la misma clase. Por eso estas métricas son un complemento y no sustituyen a RMSE, MAE y R².
+- Los resultados dependen de los cortes elegidos (3.80 y 4.08), calculados con el entrenamiento. Con otros cortes cambiarían las cifras, aunque probablemente no la conclusión.
+- La prueba de McNemar y el intervalo de confianza de la exactitud suponen observaciones independientes, algo razonable aquí, pero con tantos errores sistemáticos el p-valor de McNemar tiene poco valor adicional.
+
+**Conclusión provisional.** En el conjunto de prueba, la regresión múltiple clasifica correctamente el 37.6% de los juegos, una mejora pequeña pero significativa frente al 34.9% de la clase mayoritaria (kappa = 0.084). Su principal limitación es que contrae las predicciones hacia el rating medio: clasifica como Medio al 77% de los juegos, y por eso detecta mal los juegos de rating bajo y, sobre todo, alto. Esto coincide con el R² bajo del ajuste en entrenamiento (0.108).
+
+*Pendiente: añadir RMSE, MAE y R² de prueba, y comparar con la línea base (0.3406).*
+
+#### kNN para regresión
+
+Se predice el `rating` de los juegos de `test`. `caret` aplica automáticamente el centrado y el escalado calculados con el entrenamiento, así que no hay fuga de información. La instrucción `bind_rows()` está escrita para poder ejecutarse más de una vez sin duplicar filas.
+
+```{r}
+#| label: evaluacion-knn
+pred_knn <- predict(modelo_knn, newdata = test)
+
+# Verificación
+length(pred_knn)
+sum(is.na(pred_knn))
+```
+
+```{r}
+#| label: rango-predicciones-knn
+rbind(
+  Observado = summary(test$rating),
+  kNN       = summary(pred_knn)
+)
+```
+
+```{r}
+#| label: clases-knn
+pred_clase_knn <- a_clase(pred_knn)
+
+table(Predicho = pred_clase_knn)
+```
+
+```{r}
+#| label: matriz-confusion-knn
+cm_knn <- confusionMatrix(data = pred_clase_knn, reference = obs_clase)
+cm_knn$table
+```
+
+```{r}
+#| label: metricas-clasificacion-knn
+# Globales: Accuracy, Kappa, intervalo de confianza, tasa de no información, etc.
+round(cm_knn$overall, 4)
+
+# Por clase: sensibilidad, especificidad, valores predictivos, F1, etc.
+round(cm_knn$byClass, 4)
+
+# Reporte completo de caret
+cm_knn
+```
+
+#### Metricas de KNN
+
+**Rango de las predicciones.** Las predicciones del kNN (con *k* = 41) están muy contraídas respecto al `rating` observado en `test`:
+
+|           | Mínimo | 1.er cuartil | Mediana | Media | 3.er cuartil | Máximo |
+|-----------|--------|--------------|---------|-------|--------------|--------|
+| Observado | 3.29   | 3.72         | 3.93    | 3.915 | 4.17         | 4.83   |
+| kNN       | 3.62   | 3.82         | 3.92    | 3.910 | 3.99         | 4.19   |
+
+La media y la mediana de las predicciones coinciden casi con las observadas, así que el modelo no tiene un sesgo global. Pero su dispersión es mucho menor: el rango intercuartílico es de 0.17 frente a 0.45 del `rating` real, y el rango total es de 0.57 frente a 1.54. Es decir, el modelo recoge solo una pequeña parte de la variabilidad del `rating`, como era de esperar al promediar 41 vecinos.
+
+**Distribución de las predicciones.** Con los mismos cortes en terciles que en la regresión múltiple (3.80 y 4.08), el kNN predice la clase Medio en 1,356 juegos (75.6%), Bajo en 350 (19.5%) y Alto en solo 87 (4.9%). Como el tercer cuartil de las predicciones (3.99) queda por debajo del corte de Alto (4.08), casi ningún juego puede salir clasificado como Alto.
+
+**Matriz de confusión**
+
+| Predicción  Observado | Bajo | Medio | Alto |
+|-----------------------|------|-------|------|
+| **Bajo**              | 178  | 92    | 80   |
+| **Medio**             | 423  | 440   | 493  |
+| **Alto**              | 7    | 27    | 53   |
+
+Hay 671 aciertos en la diagonal (178 + 440 + 53) de 1,793 juegos. Como en la regresión múltiple, los errores se concentran en la fila de Medio: 423 juegos de rating bajo y 493 de rating alto fueron clasificados como Medio. De los 1,122 errores, 1,035 (92%) son entre clases adyacentes y solo 87 (8%) son entre extremos.
+
+**Métricas globales**
+
+| Métrica | Valor | Lectura |
+|------------------------|------------------------|------------------------|
+| Exactitud (*accuracy*) | 0.374 (IC 95%: 0.352 a 0.397) | Acierta 3 de cada 8 juegos |
+| Tasa de no información (NIR) | 0.349 | Exactitud de predecir siempre la clase más frecuente (Alto) |
+| p-valor (exactitud \> NIR) | 0.014 | Mejora estadísticamente significativa, pero justa |
+| Kappa | 0.081 | Acuerdo "leve" por encima del azar |
+| Prueba de McNemar | p \< 2e-16 | Errores asimétricos (sesgo hacia la clase Medio) |
+
+La exactitud supera a la NIR en unos 2.5 puntos porcentuales. Es significativa, pero el límite inferior del intervalo de confianza (0.352) apenas queda por encima de la NIR (0.349), así que la evidencia es más ajustada que en la regresión múltiple. El kappa de 0.081 indica un acuerdo apenas superior al azar.
+
+**Métricas por clase**
+
+| Métrica                               | Bajo  | Medio | Alto  |
+|---------------------------------------|-------|-------|-------|
+| Sensibilidad (recall)                 | 0.293 | 0.787 | 0.085 |
+| Especificidad                         | 0.855 | 0.258 | 0.971 |
+| Valor predictivo positivo (precisión) | 0.509 | 0.325 | 0.609 |
+| Valor predictivo negativo             | 0.702 | 0.728 | 0.664 |
+| F1                                    | 0.372 | 0.460 | 0.149 |
+| Prevalencia                           | 0.339 | 0.312 | 0.349 |
+| Tasa de detección                     | 0.099 | 0.245 | 0.030 |
+| Prevalencia de predicción             | 0.195 | 0.756 | 0.049 |
+| Exactitud balanceada                  | 0.574 | 0.522 | 0.528 |
+
+- **Bajo:** es la clase que mejor detecta (sensibilidad de 0.29), y acierta en el 51% de los juegos que clasifica como Bajo, frente a una prevalencia de 34%. Tiene la mayor exactitud balanceada de las tres (0.574).
+- **Alto:** casi no la detecta (sensibilidad de 0.085, es decir, 53 de 626 juegos). Cuando la predice, acierta en el 61% de los casos, pero son solo 87 predicciones. La especificidad de 0.97 se debe a que casi nunca predice esta clase, no a un mérito del modelo.
+- **Medio:** su sensibilidad de 0.79 es engañosa, porque el modelo predice Medio en el 76% de los juegos. La precisión (0.325) es prácticamente la prevalencia de la clase (0.312), es decir, no hay capacidad real de distinguirla.
+- **Resumen:** el F1 promedio de las tres clases es 0.327 y la exactitud balanceada promedio es 0.541, apenas por encima de 0.5 (azar).
+
+**Comparación preliminar con la regresión múltiple**
+
+| Métrica                             | Regresión múltiple | kNN              |
+|------------------------|------------------------|------------------------|
+| Aciertos (de 1,793)                 | 674                | 671              |
+| Exactitud                           | 0.3759             | 0.3742           |
+| Kappa                               | 0.0837             | 0.0812           |
+| Predicciones en Bajo / Medio / Alto | 271 / 1,378 / 144  | 350 / 1,356 / 87 |
+| Sensibilidad Bajo / Alto            | 0.235 / 0.131      | 0.293 / 0.085    |
+
+Los dos modelos son prácticamente equivalentes en conjunto: la diferencia es de 3 juegos y está muy dentro del ruido. La diferencia está en cómo se reparte el acierto: el kNN detecta mejor los juegos de rating bajo (350 predicciones en Bajo frente a 271) y peor los de rating alto (87 frente a 144). Con 1,793 juegos de prueba, no hay evidencia de que un modelo sea mejor que el otro en esta versión discretizada.
+
+**Limitaciones de esta evaluación**
+
+- La discretización en terciles descarta información: un error de 0.01 en el borde de un corte cuenta igual que uno de 1.0. Por eso estas métricas son un complemento y no sustituyen a RMSE, MAE y R².
+- Los resultados dependen de los cortes (3.80 y 4.08), calculados con el entrenamiento.
+- El kNN no entrega coeficientes ni reglas, así que estas métricas no explican por qué se equivoca.
+
+**Conclusión provisional.** En el conjunto de prueba, el kNN clasifica correctamente el 37.4% de los juegos, una mejora pequeña pero significativa frente al 34.9% de la clase mayoritaria (kappa = 0.081). Sus predicciones están muy contraídas hacia el rating medio (rango intercuartílico de 0.17 frente a 0.45 del real): clasifica como Medio al 76% de los juegos y casi nunca predice Alto. Su desempeño es prácticamente igual al de la regresión múltiple, lo que sugiere que con estas variables, y sin ingeniería de características, ningún modelo local o lineal captura mucho más que una señal débil.
+
+*Pendiente: añadir RMSE, MAE y R² de prueba, y comparar con la línea base (0.3406).*
+
+#### Árbol de regresión
+
+El árbol predice el `rating` de cada juego de `test` como el promedio de la hoja a la que llega. Como el árbol tiene 12 hojas, solo puede producir 12 valores distintos de predicción.
+
+```{r}
+#| label: evaluacion-arbol
+pred_tree <- predict(modelo_tree, newdata = test)
+
+# Verificación
+length(pred_tree)
+sum(is.na(pred_tree))
+length(unique(pred_tree))   # valores distintos (máximo 12, uno por hoja)
+```
+
+```{r}
+#| label: rango-predicciones-arbol
+rbind(
+  Observado = summary(test$rating),
+  Árbol     = summary(pred_tree)
+)
+
+# Número de juegos de prueba por valor predicho (una fila por hoja alcanzada)
+table(Prediccion = round(pred_tree, 3))
+```
+
+```{r}
+#| label: clases-arbol
+pred_clase_tree <- a_clase(pred_tree)
+
+table(Predicho = pred_clase_tree)
+```
+
+```{r}
+#| label: matriz-confusion-arbol
+cm_tree <- confusionMatrix(data = pred_clase_tree, reference = obs_clase)
+cm_tree$table
+```
+
+```{r}
+#| label: metricas-clasificacion-arbol
+# Globales: Accuracy, Kappa, intervalo de confianza, tasa de no información, etc.
+round(cm_tree$overall, 4)
+
+# Por clase: sensibilidad, especificidad, valores predictivos, F1, etc.
+round(cm_tree$byClass, 4)
+
+# Reporte completo de caret
+cm_tree
+```
+
+#### Metricas árbol de regresión
+
+**Predicciones.** El árbol solo puede producir 12 valores distintos (uno por hoja), y en `test` se alcanzaron las 12. Cuatro valores concentran el 78% de los juegos: 3.782 (591 juegos, 33%), 3.882 (307), 4.073 (303) y 3.979 (199). El reparto de los juegos de prueba entre las hojas se parece al del entrenamiento (por ejemplo, la hoja más grande contiene el 33% en ambos conjuntos), lo que indica que el árbol no depende de un grupo particular de juegos.
+
+|           | Mínimo | 1.er cuartil | Mediana | Media | 3.er cuartil | Máximo |
+|-----------|--------|--------------|---------|-------|--------------|--------|
+| Observado | 3.29   | 3.72         | 3.93    | 3.915 | 4.17         | 4.83   |
+| Árbol     | 3.78   | 3.78         | 3.88    | 3.912 | 4.00         | 4.19   |
+
+La media de las predicciones (3.912) coincide con la observada (3.915), así que no hay sesgo global. Pero la dispersión es mucho menor: el rango intercuartílico es de 0.22 frente a 0.45 del `rating` real, y el rango total es de 0.41 frente a 1.54. Además, más de la cuarta parte de los juegos recibe exactamente la misma predicción (3.782), lo que explica que el mínimo y el primer cuartil coincidan.
+
+**Distribución por clases.** Con los mismos cortes en terciles que en los otros modelos (3.80 y 4.08), el árbol predice Bajo en 591 juegos (33.0%), Medio en 1,178 (65.7%) y Alto en solo 24 (1.3%). Es un reparto distinto al de la regresión múltiple y al del kNN, que mandaban casi todo a Medio y predecían menos de la mitad de juegos como Bajo. La razón es que la hoja más grande del árbol tiene un promedio de 3.782, justo por debajo del corte de Bajo, de modo que sus 591 juegos de prueba quedan en esa clase.
+
+**Matriz de confusión**
+
+| Predicción  Observado | Bajo | Medio | Alto |
+|-----------------------|------|-------|------|
+| **Bajo**              | 302  | 164   | 125  |
+| **Medio**             | 303  | 390   | 485  |
+| **Alto**              | 3    | 5     | 16   |
+
+Hay 708 aciertos en la diagonal (302 + 390 + 16) de 1,793 juegos. Los errores se concentran en la fila de Medio: 303 juegos de rating bajo y 485 de rating alto fueron clasificados como Medio. De los 1,085 errores, 957 (88%) son entre clases adyacentes y 128 (12%) son entre extremos, una proporción algo mayor que en los otros dos modelos (7% y 8%), porque este árbol sí manda a Bajo a más juegos de Alto (125).
+
+**Métricas globales**
+
+| Métrica | Valor | Lectura |
+|------------------------|------------------------|------------------------|
+| Exactitud (*accuracy*) | 0.395 (IC 95%: 0.372 a 0.418) | Acierta 2 de cada 5 juegos |
+| Tasa de no información (NIR) | 0.349 | Exactitud de predecir siempre la clase más frecuente (Alto) |
+| p-valor (exactitud \> NIR) | 3.1e-05 | Mejora estadísticamente significativa |
+| Kappa | 0.108 | Acuerdo "leve" por encima del azar |
+| Prueba de McNemar | p \< 2.2e-16 | Errores asimétricos (sesgo hacia la clase Medio) |
+
+La exactitud supera a la NIR en unos 4.6 puntos porcentuales y el intervalo de confianza queda claramente por encima de ella (límite inferior de 0.372, frente a 0.349), una evidencia más firme que la de la regresión múltiple y el kNN. Aun así, el kappa de 0.108 indica que el acuerdo con las clases reales sigue siendo bajo.
+
+**Métricas por clase**
+
+| Métrica                               | Bajo  | Medio | Alto  |
+|---------------------------------------|-------|-------|-------|
+| Sensibilidad (recall)                 | 0.497 | 0.698 | 0.026 |
+| Especificidad                         | 0.756 | 0.361 | 0.993 |
+| Valor predictivo positivo (precisión) | 0.511 | 0.331 | 0.667 |
+| Valor predictivo negativo             | 0.745 | 0.725 | 0.655 |
+| F1                                    | 0.504 | 0.449 | 0.049 |
+| Prevalencia                           | 0.339 | 0.312 | 0.349 |
+| Tasa de detección                     | 0.168 | 0.218 | 0.009 |
+| Prevalencia de predicción             | 0.330 | 0.657 | 0.013 |
+| Exactitud balanceada                  | 0.626 | 0.530 | 0.509 |
+
+- **Bajo:** es el mejor resultado del árbol y de los tres modelos para esta clase. Detecta la mitad de los juegos de rating bajo (302 de 608) y acierta en el 51% de los que clasifica como Bajo, frente a una prevalencia de 34%. Su exactitud balanceada (0.626) es la más alta de todas las clases y modelos.
+- **Alto:** casi no la detecta (16 de 626 juegos, sensibilidad de 0.026). La precisión de 0.667 se calcula sobre solo 24 predicciones, por lo que es poco fiable. La especificidad de 0.993 se debe a que casi nunca predice esta clase, y no es un mérito del modelo.
+- **Medio:** su sensibilidad de 0.70 es engañosa, porque el árbol predice Medio en el 66% de los juegos. La precisión (0.331) es prácticamente la prevalencia de la clase (0.312), es decir, no hay capacidad real de distinguirla.
+- **Resumen:** el F1 promedio de las tres clases es 0.334 y la exactitud balanceada promedio es 0.555.
+
+**Comparación preliminar con la regresión múltiple y el kNN**
+
+| Métrica | Regresión múltiple | kNN | Árbol |
+|------------------|------------------|------------------|------------------|
+| Aciertos (de 1,793) | 674 | 671 | 708 |
+| Exactitud | 0.3759 | 0.3742 | 0.3949 |
+| Kappa | 0.0837 | 0.0812 | 0.1084 |
+| Predicciones en Bajo / Medio / Alto | 271 / 1,378 / 144 | 350 / 1,356 / 87 | 591 / 1,178 / 24 |
+| Sensibilidad Bajo / Medio / Alto | 0.235 / 0.803 / 0.131 | 0.293 / 0.787 / 0.085 | 0.497 / 0.698 / 0.026 |
+| F1 promedio | 0.334 | 0.327 | 0.334 |
+| Exactitud balanceada promedio | 0.543 | 0.541 | 0.555 |
+
+El árbol obtiene la mayor exactitud y el mayor kappa, con 34 aciertos más que la regresión múltiple (unos 1.9 puntos porcentuales). Sin embargo, la ventaja es pequeña: los intervalos de confianza de la exactitud se solapan (0.372 a 0.418 frente a 0.353 a 0.399) y, con los tres modelos evaluados sobre los mismos juegos, la diferencia debería contrastarse con una prueba pareada antes de afirmar que el árbol es mejor. Además, su ventaja no viene de discriminar mejor las tres clases, sino de repartirlas distinto: sacrifica casi por completo la clase Alto (sensibilidad de 0.026 frente a 0.131) para detectar mucho mejor la clase Bajo (0.497 frente a 0.235). El F1 promedio es igual al de la regresión múltiple (0.334).
+
+**Limitaciones de esta evaluación**
+
+- La discretización en terciles descarta información, y es especialmente delicada con un árbol, porque sus predicciones son pocas y discretas. Dos hojas tienen promedios muy cercanos a los cortes (3.782, a solo 0.02 del corte de 3.80, y 4.073, a menos de 0.01 del corte de 4.08), y esos valores concentran más de 900 juegos de prueba. Un cambio pequeño en los cortes reclasificaría a cientos de ellos y movería de forma notable la exactitud y la sensibilidad de Alto. Por eso estas métricas deben tomarse como un complemento y no sustituyen a RMSE, MAE y R².
+- Los resultados dependen de los cortes (3.80 y 4.08), calculados con el entrenamiento.
+- El tamaño del árbol se fijó a mano y no se eligió por validación cruzada, así que su desempeño no es necesariamente el máximo posible para esta familia de modelos.
+
+**Conclusión provisional.** En el conjunto de prueba, el árbol de regresión clasifica correctamente el 39.5% de los juegos, el mejor resultado de los tres modelos evaluados hasta ahora, y supera con claridad a la clase mayoritaria (34.9%; kappa = 0.108). Su ventaja es modesta y se debe a que detecta bien los juegos de rating bajo (sensibilidad de 0.50), a costa de casi no detectar los de rating alto (0.03). Como los demás modelos, concentra sus predicciones en el rating medio y sus resultados son todavía débiles en términos absolutos.
+
+*Pendiente: añadir RMSE, MAE y R² de prueba, y comparar con la línea base (0.3406).*
+
+#### SVM de regresión - Evaluación
+
+```{r}
+#| label: evaluacion-svm
+pred_svm <- as.numeric(predict(modelo_svm, newdata = test))
+
+# Verificación
+length(pred_svm)
+sum(is.na(pred_svm))
+```
+
+```{r}
+#| label: rango-predicciones-svm
+rbind(
+  Observado = summary(test$rating),
+  SVM       = summary(pred_svm)
+)
+```
+
+```{r}
+#| label: clases-svm
+pred_clase_svm <- a_clase(pred_svm)
+
+table(Predicho = pred_clase_svm)
+```
+
+```{r}
+#| label: matriz-confusion-svm
+cm_svm <- confusionMatrix(data = pred_clase_svm, reference = obs_clase)
+cm_svm$table
+```
+
+```{r}
+#| label: metricas-clasificacion-svm
+# Globales: Accuracy, Kappa, intervalo de confianza, tasa de no información, etc.
+round(cm_svm$overall, 4)
+
+# Por clase: sensibilidad, especificidad, valores predictivos, F1, etc.
+round(cm_svm$byClass, 4)
+
+# Reporte completo de caret
+cm_svm
+```
+
+#### Métricas de SVM
+
+**Predicciones.** El SVM produce predicciones continuas, pero muy concentradas alrededor del centro del `rating`:
+
+|           | Mínimo | 1.er cuartil | Mediana | Media | 3.er cuartil | Máximo |
+|-----------|--------|--------------|---------|-------|--------------|--------|
+| Observado | 3.29   | 3.72         | 3.93    | 3.915 | 4.17         | 4.83   |
+| SVM       | 3.69   | 3.87         | 3.93    | 3.936 | 4.00         | 4.23   |
+
+La mediana de las predicciones coincide con la observada (3.93), pero la media es algo mayor (3.936 frente a 3.915), un sesgo positivo de unas 0.02 décimas de punto, mayor que el de los otros modelos. La dispersión es muy reducida: el rango intercuartílico es de 0.13 frente a 0.45 del `rating` real (en el kNN es 0.17 y en el árbol 0.22), y el rango total es de 0.54 frente a 1.54. Es decir, el SVM es el modelo que más contrae sus predicciones hacia el centro, y ningún juego se predice por debajo de 3.69 ni por encima de 4.23.
+
+**Distribución por clases.** Con los mismos cortes en terciles que en los otros modelos (3.80 y 4.08), el SVM predice la clase Medio en 1,585 juegos (88.4%), Bajo en 86 (4.8%) y Alto en 122 (6.8%). Como el primer cuartil de las predicciones (3.87) queda por encima del corte de Bajo (3.80), muy pocos juegos pueden salir clasificados como Bajo.
+
+**Matriz de confusión**
+
+| Predicción  Observado | Bajo | Medio | Alto |
+|-----------------------|------|-------|------|
+| **Bajo**              | 47   | 20    | 19   |
+| **Medio**             | 544  | 506   | 535  |
+| **Alto**              | 17   | 33    | 72   |
+
+Hay 625 aciertos en la diagonal (47 + 506 + 72) de 1,793 juegos. Casi todos los errores están en la fila de Medio: 544 juegos de rating bajo y 535 de rating alto fueron clasificados como Medio. De los 1,168 errores, 1,132 (97%) son entre clases adyacentes y solo 36 (3%) son entre extremos.
+
+**Métricas globales**
+
+| Métrica | Valor | Lectura |
+|------------------------|------------------------|------------------------|
+| Exactitud (*accuracy*) | 0.349 (IC 95%: 0.327 a 0.371) | Acierta 1 de cada 3 juegos |
+| Tasa de no información (NIR) | 0.349 | Exactitud de predecir siempre la clase más frecuente (Alto) |
+| p-valor (exactitud \> NIR) | 0.529 | No hay mejora estadísticamente significativa |
+| Kappa | 0.048 | Acuerdo muy débil por encima del azar |
+| Prueba de McNemar | p \< 2e-16 | Errores asimétricos (sesgo hacia la clase Medio) |
+
+La exactitud (0.3486) es prácticamente igual a la NIR (0.3491), y el intervalo de confianza la contiene, así que, en esta versión discretizada, el SVM no mejora a predecir siempre la clase más frecuente. El kappa de 0.048 confirma un acuerdo apenas distinguible del azar.
+
+**Métricas por clase**
+
+| Métrica                               | Bajo  | Medio | Alto  |
+|---------------------------------------|-------|-------|-------|
+| Sensibilidad (recall)                 | 0.077 | 0.905 | 0.115 |
+| Especificidad                         | 0.967 | 0.126 | 0.957 |
+| Valor predictivo positivo (precisión) | 0.547 | 0.319 | 0.590 |
+| Valor predictivo negativo             | 0.671 | 0.745 | 0.668 |
+| F1                                    | 0.135 | 0.472 | 0.193 |
+| Prevalencia                           | 0.339 | 0.312 | 0.349 |
+| Tasa de detección                     | 0.026 | 0.282 | 0.040 |
+| Prevalencia de predicción             | 0.048 | 0.884 | 0.068 |
+| Exactitud balanceada                  | 0.522 | 0.515 | 0.536 |
+
+- **Bajo y Alto:** casi no los detecta (sensibilidad de 0.077 y 0.115: 47 de 608 y 72 de 626 juegos). Las precisiones de 0.55 y 0.59 se calculan sobre solo 86 y 122 predicciones, por lo que son poco fiables, y las especificidades altas (0.97 y 0.96) se deben a que casi nunca predice esas clases, no a un mérito del modelo.
+- **Medio:** su sensibilidad de 0.905 es engañosa, porque el modelo predice Medio en el 88% de los juegos. La precisión (0.319) es prácticamente la prevalencia de la clase (0.312) y la especificidad es de 0.126: no hay capacidad real de distinguirla.
+- **Resumen:** el F1 promedio de las tres clases es 0.267 y la exactitud balanceada promedio es 0.525, apenas por encima de 0.5 (azar). La mejor clase en exactitud balanceada es Alto (0.536), pero la diferencia entre clases es mínima.
+
+**Comparación de los cuatro modelos**
+
+| Métrica | Regresión múltiple | kNN | Árbol | SVM |
+|---------------|---------------|---------------|---------------|---------------|
+| Aciertos (de 1,793) | 674 | 671 | 708 | 625 |
+| Exactitud | 0.376 | 0.374 | 0.395 | 0.349 |
+| IC 95% de la exactitud | 0.353 a 0.399 | 0.352 a 0.397 | 0.372 a 0.418 | 0.327 a 0.371 |
+| p-valor (exactitud \> NIR) | 0.0096 | 0.014 | 3.1e-05 | 0.529 |
+| Kappa | 0.084 | 0.081 | 0.108 | 0.048 |
+| Predicciones en Bajo / Medio / Alto | 271 / 1,378 / 144 | 350 / 1,356 / 87 | 591 / 1,178 / 24 | 86 / 1,585 / 122 |
+| Sensibilidad Bajo / Medio / Alto | 0.235 / 0.803 / 0.131 | 0.293 / 0.787 / 0.085 | 0.497 / 0.698 / 0.026 | 0.077 / 0.905 / 0.115 |
+| F1 promedio | 0.334 | 0.327 | 0.334 | 0.267 |
+| Exactitud balanceada promedio | 0.543 | 0.541 | 0.555 | 0.525 |
+
+- **Ordenamiento:** en exactitud y kappa, el orden es árbol, regresión múltiple, kNN y SVM. La regresión múltiple y el kNN son prácticamente equivalentes (3 juegos de diferencia).
+- **Árbol frente a SVM:** la diferencia es de 83 aciertos (4.6 puntos porcentuales) y los intervalos de confianza de la exactitud no se solapan (0.372 a 0.418 frente a 0.327 a 0.371). Es la única comparación entre pares con una diferencia claramente más grande que su incertidumbre. Entre el árbol y la regresión múltiple (34 aciertos) los intervalos sí se solapan, y habría que contrastarlo con una prueba pareada antes de afirmar que uno supera al otro.
+- **Único modelo que no supera a la clase mayoritaria:** el SVM. Los otros tres tienen p-valores \< 0.05 frente a la NIR, aunque con mejoras de solo 2.5 a 4.6 puntos porcentuales.
+- **Patrón común:** los cuatro modelos mandan la mayoría de los juegos a la clase Medio (entre el 66% y el 88%), tienen sensibilidades bajas en las clases extremas y kappas por debajo de 0.11. La diferencia entre ellos está sobre todo en cómo reparten los errores: el árbol detecta mucho mejor los juegos de rating bajo (sensibilidad de 0.50), el SVM casi ninguno (0.08).
+
+**Limitaciones de esta evaluación**
+
+- La discretización en terciles penaliza especialmente a los modelos cuyas predicciones están muy contraídas. El SVM, con un rango intercuartílico de 0.13, casi nunca cruza los cortes de 3.80 y 4.08, de modo que su clasificación en tres clases es pobre aunque su error de regresión pueda ser parecido al de los demás. Por eso, la comparación definitiva entre modelos debe apoyarse en RMSE, MAE y R².
+- Los resultados dependen de los cortes (3.80 y 4.08), calculados con el entrenamiento.
+- Los hiperparámetros del SVM (`cost` = 1, `gamma` = 0.01) estaban en el borde de la rejilla explorada y se eligieron con 3 pliegues y `epsilon` fijo, por lo que el modelo evaluado no es necesariamente el mejor posible de su familia. Esto limita la conclusión sobre el SVM: es un resultado para esta configuración y no para el SVM en general.
+
+**Conclusión provisional (clasificación).** En el conjunto de prueba, el SVM clasifica correctamente el 34.9% de los juegos, lo mismo que la clase mayoritaria (kappa = 0.048), y es el de peor desempeño de los cuatro modelos. Su rasgo principal es una contracción extrema de las predicciones hacia el rating medio: clasifica como Medio al 88% de los juegos y casi no detecta los de rating bajo ni alto. El árbol de regresión obtuvo el mejor resultado (39.5%, kappa = 0.108), seguido de la regresión múltiple y el kNN, que son equivalentes. En todos los casos, el desempeño es débil en términos absolutos, coherente con la señal débil que mostró el EDA.
+
+*Pendiente: añadir RMSE, MAE y R² de prueba de los cuatro modelos, y la conclusión final que integre regresión y clasificación.*
+
+## Evaluación comparativa
+
+```{r}
+#| label: comparacion-final
+cms <- list(
+  "Regresión múltiple" = cm_lm,
+  "kNN"                = cm_knn,
+  "Árbol de regresión" = cm_tree,
+  "SVM"                = cm_svm
+)
+
+clasificacion_test <- tibble(
+  modelo    = names(cms),
+  accuracy  = sapply(cms, \(m) m$overall["Accuracy"]),
+  kappa     = sapply(cms, \(m) m$overall["Kappa"]),
+  F1_prom   = sapply(cms, \(m) mean(m$byClass[, "F1"], na.rm = TRUE)),
+  bal_acc_prom = sapply(cms, \(m) mean(m$byClass[, "Balanced Accuracy"]))
+)
+
+# Regresión + clasificación, ordenado por RMSE
+resultados_test |>
+  left_join(clasificacion_test, by = "modelo") |>
+  arrange(RMSE) |>
+  mutate(across(where(is.numeric), \(x) round(x, 4)))
+```
