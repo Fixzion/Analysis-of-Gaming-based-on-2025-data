@@ -9,7 +9,7 @@ execute:
   message: false
 ---
 
-## Librerias
+# Librerias
 
 ```{r}
 library(rpart)
@@ -18,213 +18,1478 @@ library(ggplot2)
 library(funModeling)
 library(janitor)
 library(here)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(e1071)
 ```
 
-## KDD 2 - Para ing.caracteristicas
+## ETL
+
+El ETL de esta versión parte de `gaming_2025_limpio.csv`, que es `df2` de la parte 1 (duplicados eliminados, sin pre-lanzamientos ni juegos sin plataforma, 8,963 filas). A diferencia de la parte 1, **no se convierte nada a factor ni se imputa**: las columnas `platforms`, `developers`, `genres` y `publishers` se conservan como texto con sus valores múltiples, porque la ingeniería de características necesita separarlos. Todo lo que aprende de los datos (imputación, agrupación de niveles raros, escalado, codificaciones) se calcula después del split, solo con `train`.
+
+### Extracción
 
 ```{r}
-str()
+#| label: p2-carga
+ruta_limpio <- here("Data", "Processed", "gaming_2025_limpio.csv")
+
+raw2 <- read_csv(
+  ruta_limpio,
+  col_types = cols(
+    id                = col_double(),
+    name              = col_character(),
+    released          = col_character(),
+    updated           = col_datetime(),
+    rating            = col_double(),
+    suggestions_count = col_double(),
+    platforms         = col_character(),
+    developers        = col_character(),
+    genres            = col_character(),
+    publishers        = col_character(),
+    image             = col_character(),
+    description       = col_character(),
+    fecha             = col_date(),
+    anio              = col_double()
+  )
+)
+
+dim(raw2)
 ```
 
-### Ingeniería de características
-
-|Bloque	| Características |	Cómo se construye|
-|-----------|----------------------|-----------------------------------------|
-|Género	| gen_* (19 columnas 0/1), n_generos	| Se separan los géneros de cada celda|
-|Plataformas |	pf_* (7 familias 0/1), n_plataformas, n_familias, solo_pc, multiplataforma	| Cada plataforma se asigna a una familia|
-|Tiempo |	edad_juego, era	| A partir de anio|
-|Empresas	| autopublicado	| Compara developers con publishers|
+Verificación contra lo que documentó la parte 1 (8,963 filas, 14 columnas; NA en `anio` 155, `developers` 272, `genres` 366, `publishers` 498 y ninguno en `platforms`):
 
 ```{r}
-#| label: fe-generos
-gen_feat <- df3 |>
-  select(id, genres) |>
-  filter(!is.na(genres)) |>
-  mutate(n_generos = str_count(genres, ",") + 1L) |>
-  separate_longer_delim(genres, delim = ", ") |>
-  distinct(id, n_generos, genres) |>
-  mutate(valor = 1L) |>
-  pivot_wider(names_from = genres, values_from = valor,
-              values_fill = 0L, names_prefix = "gen_") |>
-  clean_names()
+#| label: p2-verif-carga
+stopifnot(nrow(raw2) == 8963, ncol(raw2) == 14)
 
-gen_feat
+# id único: una fila por juego
+n_distinct(raw2$id) == nrow(raw2)
+
+# NA por variable de interés
+raw2 |>
+  summarise(across(c(anio, platforms, developers, genres, publishers, rating,
+                     suggestions_count),
+                   \(x) sum(is.na(x)))) |>
+  pivot_longer(everything(), names_to = "variable", values_to = "q_na")
+
+# Rango de las numéricas
+raw2 |>
+  summarise(across(c(rating, suggestions_count, anio),
+                   list(min = \(x) min(x, na.rm = TRUE),
+                        max = \(x) max(x, na.rm = TRUE))))
 ```
 
-```{r}
-#| label: fe-plataformas-familia
-pla_larga <- df3 |>
-  select(id, platforms) |>
-  separate_longer_delim(platforms, delim = ", ") |>
-  mutate(familia = case_when(
-    str_detect(platforms, "^(PlayStation|PS Vita|PSP)")         ~ "playstation",
-    str_detect(platforms, "^Xbox")                               ~ "xbox",
-    str_detect(platforms, "Nintendo|Wii|GameCube|Game Boy|NES")  ~ "nintendo",
-    platforms %in% c("PC", "macOS", "Linux")                     ~ "pc",
-    platforms %in% c("iOS", "Android")                           ~ "movil",
-    str_detect(platforms, "SEGA|Genesis|Dreamcast|Game Gear")    ~ "sega",
-    TRUE                                                         ~ "otras"))
+Resultado esperado: `id` único, `rating` sin NA entre 3.29 y 5.00, `suggestions_count` de 0 a unos 1,700 y `anio` de 1971 a 2025 con 155 NA.
 
-# Revisión de la asignación (51 filas)
-pla_larga |> distinct(platforms, familia) |> arrange(familia, platforms)
-```
+### Diagnóstico de las columnas multivalor
+
+Antes de separar valores en la ingeniería de características hay que revisar dos problemas que ya aparecieron en el EDA de la parte 1.
+
+**a) Fragmentos de nombres partidos por la coma** (por ejemplo, `HAMSTER, Co.`, que al separar por `", "` produce `HAMSTER` y `Co.`):
 
 ```{r}
-#| label: fe-plataformas
-pla_n <- pla_larga |> count(id, name = "n_plataformas")
+#| label: p2-diag-fragmentos
+patron_frag <- regex("^(inc|llc|ltd|co|corp|gmbh)\\.?$", ignore_case = TRUE)
 
-pla_fam <- pla_larga |>
-  distinct(id, familia) |>
-  mutate(valor = 1L) |>
-  pivot_wider(names_from = familia, values_from = valor,
-              values_fill = 0L, names_prefix = "pf_")
-
-pla_feat <- pla_n |>
-  left_join(pla_fam, by = "id") |>
-  mutate(n_familias      = as.integer(rowSums(across(starts_with("pf_")))),
-         solo_pc         = as.integer(pf_pc == 1 & n_familias == 1),
-         multiplataforma = as.integer(n_familias >= 2))
-
-pla_n
-```
-
-```{r}
-#| label: fe-tiempo
-anio_ref <- 2025
-
-crear_tiempo <- function(d) {
-  d |>
-    mutate(edad_juego = anio_ref - anio,
-           era = cut(anio,
-                     breaks = c(-Inf, 1999, 2009, 2019, Inf),
-                     labels = c("antes_2000", "2000_2009", "2010_2019", "2020_mas")))
-}
-```
-
-```{r}
-#| label: fe-ensamblado
-df4 <- df3 |>
-  left_join(gen_feat, by = "id") |>
-  left_join(pla_feat, by = "id") |>
-  mutate(across(c(n_generos, starts_with("gen_")), \(x) replace_na(x, 0L)),
-         autopublicado = case_when(
-           is.na(developers) | is.na(publishers) ~ NA_integer_,
-           developers == publishers              ~ 1L,
-           TRUE                                  ~ 0L)) |>
-  crear_tiempo()
-```
-
-```{r}
-#| label: fe-verificacion
-dim(df4)
-
-# Consistencia: n_generos coincide con la suma de columnas gen_*
-all(df4$n_generos == rowSums(select(df4, starts_with("gen_"))))
-
-# Columnas nuevas con NA (se tratan en los pasos 5 y 7)
-df4 |>
-  summarise(across(c(autopublicado, edad_juego, era), \(x) sum(is.na(x))))
-
-df4 |> count(era)
-df4 |> count(autopublicado)
-df4 |> count(n_familias)
-```
-
-**Interpretación I:** 
-- df4 tiene 8,963 filas y 42 columnas, las 8 de df3 más 34 nuevas (20 de género, 11 de plataformas, autopublicado, edad_juego y era). 
-- La revisión de la asignación de familias no debe dejar plataformas mal clasificadas, y n_generos coincide con la suma de columnas gen_*. Las nuevas columnas con NA son edad_juego y era (155, los mismos de anio) y autopublicado (640, por faltar developers o publishers). 
-- Más de la mitad de los juegos (4,557) están en una sola familia de plataformas, y 4,406 son multiplataforma.
-
-
-```{r}
-#| label: fe-rating
-dif_rating <- function(d, cols) {
-  d |>
-    select(rating, {{ cols }}) |>
-    pivot_longer(-rating, names_to = "caracteristica", values_to = "valor") |>
-    group_by(caracteristica) |>
-    summarise(n_con      = sum(valor == 1),
-              media_con  = mean(rating[valor == 1]),
-              media_sin  = mean(rating[valor == 0]),
-              dif        = media_con - media_sin,
-              .groups = "drop") |>
-    mutate(across(c(media_con, media_sin, dif), \(x) round(x, 3))) |>
-    arrange(dif)
+contar_fragmentos <- function(datos, col) {
+  datos |>
+    select(id, valor = {{ col }}) |>
+    filter(!is.na(valor)) |>
+    separate_longer_delim(valor, delim = ", ") |>
+    filter(str_detect(valor, patron_frag))
 }
 
-# Géneros (solo juegos con género conocido)
-dif_rating(filter(df4, !is.na(genres)), starts_with("gen_"))
+frag_dev <- contar_fragmentos(raw2, developers)
+frag_pub <- contar_fragmentos(raw2, publishers)
 
-# Plataformas
-dif_rating(df4, c(starts_with("pf_"), solo_pc, multiplataforma))
+c(developers = nrow(frag_dev), publishers = nrow(frag_pub))
+count(frag_dev, valor)
+count(frag_pub, valor)
 ```
 
+**b) El texto literal `"Unknown"`**, que no es un NA real. En la parte 1 explicaba por qué `developers` y `publishers` tenían un "Unknown" más que NA (273 frente a 272 y 499 frente a 498).
+
 ```{r}
-#| label: fe-rating-numericas
-# Correlación con rating (n_generos solo con género conocido)
-cor(df4$edad_juego, df4$rating, use = "complete.obs")
-cor(df4$n_plataformas, df4$rating)
-cor(df4$n_familias, df4$rating)
-df4 |> filter(!is.na(genres)) |> summarise(r = cor(n_generos, rating))
-
-# Rating por era y por autopublicado
-df4 |>
-  filter(!is.na(era)) |>
-  group_by(era) |>
-  summarise(n = n(), media = mean(rating), sd = sd(rating))
-
-df4 |>
-  filter(!is.na(autopublicado)) |>
-  group_by(autopublicado) |>
-  summarise(n = n(), media = mean(rating), sd = sd(rating))
+#| label: p2-diag-unknown
+raw2 |>
+  summarise(across(c(platforms, developers, genres, publishers),
+                   \(x) sum(x == "Unknown", na.rm = TRUE)))
 ```
 
-**Interpretación II:** Las relaciones son pequeñas, ninguna con |r| mayor a 0.18, lo que concuerda con las correlaciones débiles del EDA. Aun así, el género Indie y el uso de PC se asocian con ratings más bajos, mientras que los juegos de épocas anteriores (antes de 2010) y los de mega corporaciones como Sega tienen ratings algo mayores. 
-La relación con *era* no es lineal: el mínimo está en 2010–2019 y se recupera ligeramente a partir de 2020. 
-*Hipótesis:* Indie, PC y la década de 2010 coinciden en muchos juegos, así que sus efectos están mezclados. Autopublicado tiene un efecto muy pequeño (0.02), pero se conserva por ser simple y por su relación con el género Indie.
+Resultado esperado: 1 fragmento en `developers` (`Co`) y 10 en `publishers` (`Co.`, `LLC`, `Co`), y un `"Unknown"` literal en `developers` y otro en `publishers`.
 
-------------------------------------------------------------------------
+### Transformación
 
-### Tratamiento de faltantes
+Reglas (todas por texto, sin usar `rating` ni ningún modelo):
 
-```{r}
-# Tasa de coincidencia developers == publishers en casos completos
-completos <- df4 |> filter(!is.na(developers), !is.na(publishers))
-tibble(casos_completos = nrow(completos),
-       tasa_coincidencia = round(mean(completos$developers == completos$publishers), 3))
-
-# Cuántas filas recuperaría la regla de copiar (solo para justificar el descarte)
-df4 |>
-  summarise(solo_falta_publisher = sum(!is.na(developers) &  is.na(publishers)),
-            solo_falta_developer = sum( is.na(developers) & !is.na(publishers)),
-            faltan_ambos         = sum( is.na(developers) &  is.na(publishers)))
-```
+| Regla | Justificación |
+|-----------------------|--------------------------------------------------|
+| Pegar el fragmento `Co`, `Co.`, `LLC`, `Inc`, `Ltd`, `Corp` o `GmbH` al nombre que lo precede | La coma de "Empresa, Co." es parte del nombre; separar por coma lo partiría en dos valores falsos |
+| Convertir el texto literal `"Unknown"` en `NA` | Es un faltante escrito como texto; así todos los faltantes quedan representados igual |
+| Normalizar espacios con `str_squish()` | Evita que "PC" y "PC " cuenten como valores distintos al separar |
+| Mantener `anio` con sus 155 NA | La imputación se calcula con `train` después del split |
+| Mantener las columnas multivalor como texto | La ingeniería de características separa los valores |
 
 ```{r}
-# ¿Los ceros de suggestions_count tienen un patrón?
-df4 |>
-  mutate(cero = suggestions_count == 0) |>
-  group_by(cero) |>
-  summarise(n = n(), rating_medio = mean(rating), anio_medio = mean(anio, na.rm = TRUE))
+#| label: p2-transformacion
+# Une un fragmento de sufijo corporativo con el nombre anterior
+unir_sufijos <- function(x) {
+  x |>
+    str_replace_all(
+      regex(",\\s*(co\\.?|llc|inc\\.?|ltd\\.?|corp\\.?|gmbh)(?=,|$)",
+            ignore_case = TRUE),
+      " \\1"
+    )
+}
 
-t.test(rating ~ (suggestions_count == 0), data = df4)
-```
-
-```{r}
-df5 <- df4 |>
+etl1 <- raw2 |>
   mutate(
-    genero_na         = as.integer(is.na(genres)),
-    anio_na           = as.integer(is.na(anio)),
-    developer_unknown = as.integer(is.na(developers)),
-    publisher_unknown = as.integer(is.na(publishers)),
-    developers        = replace_na(developers, "Unknown"),
-    publishers        = replace_na(publishers, "Unknown"),
-    # autopublicado era NA cuando faltaba developers o publishers; esa
-    # información ya la llevan los dos indicadores *_unknown, así que se pasa a 0
-    autopublicado     = replace_na(autopublicado, 0L)
+    across(c(platforms, developers, genres, publishers), str_squish),
+    across(c(developers, publishers), unir_sufijos),
+    across(c(platforms, developers, genres, publishers),
+           \(x) na_if(x, "Unknown"))
+  )
+```
+
+Verificación: no deben quedar fragmentos entre los valores separados (salvo casos que empiecen la celda, sin nombre previo al cual unirse), el "Unknown" literal debe haber pasado a NA y el número de filas no cambia.
+
+```{r}
+#| label: p2-verif-transformacion
+# Fragmentos restantes (se espera 0 o muy pocos, solo los que abren la celda)
+c(developers = nrow(contar_fragmentos(etl1, developers)),
+  publishers = nrow(contar_fragmentos(etl1, publishers)))
+
+# Ejemplos de celdas corregidas
+raw2 |>
+  select(id, publishers) |>
+  inner_join(select(etl1, id, publishers_nuevo = publishers), by = "id") |>
+  filter(publishers != publishers_nuevo) |>
+  head(8)
+
+# "Unknown" literal
+etl1 |>
+  summarise(across(c(platforms, developers, genres, publishers),
+                   \(x) sum(x == "Unknown", na.rm = TRUE)))
+
+# NA: developers y publishers suben en 1 cada uno
+etl1 |>
+  summarise(across(c(anio, platforms, developers, genres, publishers),
+                   \(x) sum(is.na(x)))) |>
+  pivot_longer(everything(), names_to = "variable", values_to = "q_na")
+
+nrow(etl1) == nrow(raw2)
+```
+
+Resultado esperado: `developers` con 273 NA y `publishers` con 499 NA (los 272 y 498 de antes más el "Unknown" literal), `anio` con 155, `genres` con 366 y `platforms` con 0. Puede quedar algún fragmento que abre la celda (por ejemplo, `LLC, Liquid Bit`): no tiene nombre previo con el cual unirse y se descartará al separar los valores.
+
+### Selección de columnas
+
+| Variable | Decisión | Motivo |
+|--------------------|------------------|-----------------------------------|
+| `id` | Conservar como llave | Identifica el juego y permite vincular con la parte 1; no es predictora |
+| `rating` | Variable objetivo | No se imputa ni se transforma |
+| `anio`, `suggestions_count` | Predictoras numéricas | `anio` conserva sus NA hasta después del split |
+| `platforms`, `developers`, `genres`, `publishers` | Predictoras multivalor (texto) | Se separan en la ingeniería de características |
+| `name`, `image`, `description` | Descartar | Identificador, URL y texto libre fuera del alcance |
+| `released`, `fecha` | Descartar | Sustituidas por `anio` (solo el año es fiable) |
+| `updated` | Descartar | Metadato del registro, no del juego (igual que en la parte 1) |
+
+```{r}
+#| label: p2-seleccion
+df_etl <- etl1 |>
+  select(id, rating, anio, suggestions_count,
+         platforms, developers, genres, publishers) |>
+  mutate(anio = as.integer(anio))
+
+glimpse(df_etl)
+```
+
+### Verificación final
+
+```{r}
+#| label: p2-verif-final
+# Mismas filas y mismo orden que gaming_2025_limpio.csv
+# (el orden importa: el split de la parte 1 es sample() sobre las posiciones)
+stopifnot(nrow(df_etl) == 8963,
+          identical(df_etl$id, raw2$id))
+
+# Tipos: ninguna columna es factor
+df_etl |>
+  summarise(across(everything(), \(x) class(x)[1])) |>
+  pivot_longer(everything(), names_to = "variable", values_to = "clase")
+
+# NA por columna
+colSums(is.na(df_etl))
+
+# El objetivo no cambió respecto a la parte 1
+df_etl |> summarise(media = mean(rating), sd = sd(rating))
+```
+
+Resultado esperado: 8,963 filas, 8 columnas, `rating` con media 3.91 y desviación 0.34 (igual que en la parte 1), `anio` entero y los cuatro campos multivalor como texto.
+
+### Guardado del dataset del ETL
+
+```{r}
+#| label: p2-guardar-etl
+dir.create(here("Data", "Processed"), showWarnings = FALSE, recursive = TRUE)
+
+ruta_etl <- here("Data", "Processed", "gaming_2025_etl.csv")
+write_csv(df_etl, ruta_etl)
+
+# Verificación de ida y vuelta
+chk_etl <- read_csv(ruta_etl, show_col_types = FALSE)
+
+dim(chk_etl)                            # 8963 filas y 8 columnas
+identical(names(chk_etl), names(df_etl))
+identical(chk_etl$id, df_etl$id)        # mismo orden
+colSums(is.na(chk_etl))                 # anio 155, developers 273, genres 366, publishers 499
+```
+
+### Bitácora de versiones (parte 2)
+
+| Objeto | Qué se hizo | Filas | Columnas | NA en las variables usadas |
+|-----------|-----------------------|-----------|-----------|----------------|
+| `raw2` | Lectura de `gaming_2025_limpio.csv` (`df2` de la parte 1) | 8,963 | 14 | 1,291 |
+| `etl1` | Sufijos corporativos unidos al nombre, `"Unknown"` a `NA`, espacios normalizados | 8,963 | 14 | 1,293 |
+| `df_etl` | Selección de columnas; `anio` como entero | 8,963 | 8 | 1,293 |
+
+**Decisiones para las secciones siguientes.**
+
+- No se crean factores ni se agrupan niveles raros (`"Other"`): ese corte depende de las frecuencias en `train`.
+- No se imputa `anio`: la mediana se calculará solo con `train` y se acompañará de un indicador de faltante.
+- Los faltantes de `developers`, `genres` y `publishers` se mantienen como `NA` para que la ingeniería de características los convierta en indicadores.
+- El orden de las filas no cambió, de modo que el mismo `set.seed(123)` y `sample()` de la parte 1 reproduce el mismo split 80/20 y los mismos pliegues.
+
+## Split
+
+Se separa el conjunto en entrenamiento y prueba **antes** de la ingeniería de características. Todo lo que aprende de los datos (imputación de `anio`, agrupación de niveles raros, codificaciones, escalado) se calculará solo con `train` y se aplicará después a `test`. El conjunto de prueba se usa una sola vez, en la evaluación final.
+
+### Lectura del dataset del ETL
+
+```{r}
+#| label: p2-lectura-etl
+ruta_etl <- here("Data", "Processed", "gaming_2025_etl.csv")
+
+df_modelo2 <- read_csv(ruta_etl, show_col_types = FALSE)
+
+dim(df_modelo2)   # 8963 filas y 8 columnas
+```
+
+```{r}
+#| label: p2-verif-lectura
+stopifnot(nrow(df_modelo2) == 8963, ncol(df_modelo2) == 8)
+
+# Tipos (las multivalor siguen como texto) y NA
+df_modelo2 |>
+  summarise(across(everything(), \(x) class(x)[1])) |>
+  pivot_longer(everything(), names_to = "variable", values_to = "clase")
+
+colSums(is.na(df_modelo2))   # anio 155, developers 273, genres 366, publishers 499
+```
+
+### División en entrenamiento y prueba
+
+Se usa `createDataPartition()` de `caret` con 80 % para entrenamiento. Como `rating` es numérico, la función lo divide internamente en grupos por cuantiles y muestrea dentro de cada grupo, de modo que `train` y `test` conserven una distribución de `rating` parecida (útil con una distribución multimodal como la de esta variable). La estratificación usa solo el objetivo y no toca los predictores.
+
+```{r}
+#| label: p2-split
+set.seed(123)
+
+idx_train2 <- createDataPartition(df_modelo2$rating, p = 0.8, list = FALSE)[, 1]
+
+train2 <- df_modelo2[idx_train2, ]
+test2  <- df_modelo2[-idx_train2, ]
+
+c(train = nrow(train2), test = nrow(test2))
+```
+
+### Verificación del split
+
+```{r}
+#| label: p2-verif-split
+# Sin traslape y sin pérdida de filas
+length(intersect(train2$id, test2$id))        # debe ser 0
+nrow(train2) + nrow(test2) == nrow(df_modelo2)
+
+# Distribución del objetivo en cada conjunto
+bind_rows(
+  train = summarise(train2, n = n(), media = mean(rating), de = sd(rating),
+                    q25 = quantile(rating, .25), mediana = median(rating),
+                    q75 = quantile(rating, .75)),
+  test  = summarise(test2,  n = n(), media = mean(rating), de = sd(rating),
+                    q25 = quantile(rating, .25), mediana = median(rating),
+                    q75 = quantile(rating, .75)),
+  .id = "conjunto"
+)
+```
+
+```{r}
+#| label: p2-verif-na-split
+# Faltantes por conjunto: deben repartirse en proporciones parecidas
+bind_rows(
+  train = summarise(train2, across(c(anio, developers, genres, publishers),
+                                   \(x) round(100 * mean(is.na(x)), 2))),
+  test  = summarise(test2,  across(c(anio, developers, genres, publishers),
+                                   \(x) round(100 * mean(is.na(x)), 2))),
+  .id = "conjunto"
+)
+```
+
+### Línea base en prueba
+
+Con este split se recalcula la línea base: predecir siempre la media del entrenamiento.
+
+```{r}
+#| label: p2-linea-base
+rmse_base2 <- sqrt(mean((test2$rating - mean(train2$rating))^2))
+rmse_base2
+```
+
+### Validación cruzada dentro del entrenamiento
+
+Para ajustar hiperparámetros se usa validación cruzada de 10 pliegues solo sobre `train2`. `createFolds()` también estratifica por `rating`. Los pliegues se definen una vez y se reutilizan en todos los modelos, de modo que la comparación entre ellos y entre versiones de variables sea justa.
+
+```{r}
+#| label: p2-folds
+set.seed(123)
+
+folds_index2 <- createFolds(train2$rating, k = 10, list = TRUE, returnTrain = TRUE)
+folds_out2   <- lapply(folds_index2, \(i) setdiff(seq_len(nrow(train2)), i))
+
+# Tamaño de cada pliegue de validación
+sapply(folds_out2, length)
+```
+
+```{r}
+#| label: p2-ctrl
+# Control de entrenamiento común para todos los modelos de la parte 2
+ctrl2 <- trainControl(
+  method   = "cv",
+  number   = 10,
+  index    = folds_index2,
+  indexOut = folds_out2
+)
+```
+
+```{r}
+#| label: p2-verif-folds
+# Cada fila de train2 aparece exactamente una vez en un pliegue de validación
+all(sort(unlist(folds_out2)) == seq_len(nrow(train2)))
+
+# Rating medio por pliegue de validación (deben ser parecidos)
+sapply(folds_out2, \(i) round(mean(train2$rating[i]), 3))
+```
+
+**Resultado esperado.** Alrededor de 7,170 juegos en `train2` y 1,793 en `test2`; medias de `rating` casi idénticas en ambos conjuntos (≈ 3.91); sin traslape de `id`; 10 pliegues de unos 717 juegos con medias parecidas.
+
+**Comparación con la parte 1.** Este split **no es el mismo** que el de la parte 1: allí se usó `sample()` simple y aquí `createDataPartition()`, que da otra partición (y otro RMSE de línea base). Por eso los resultados de la parte 1 no se pueden comparar directamente con los de esta versión. Para una comparación justa hay que volver a ajustar los cuatro modelos de la parte 1 (sin ingeniería de características) con `train2`/`test2` y `ctrl2`, y usar esos resultados como referencia.
+
+```{r}
+#| label: p2-split-parte1
+#| eval: false
+# Alternativa: reproducir el split exacto de la parte 1 (sample simple, semilla 123).
+# Solo es válida si df_modelo2 conserva el orden de filas de la parte 1 (así es).
+set.seed(123)
+idx_train_p1 <- sample(nrow(df_modelo2), size = floor(0.8 * nrow(df_modelo2)))
+train2 <- df_modelo2[idx_train_p1, ]
+test2  <- df_modelo2[-idx_train_p1, ]
+# Los pliegues de la parte 1 eran: set.seed(123); sample(rep(1:10, length.out = nrow(train2)))
+```
+
+## Ingeniería de características
+
+Esta sección convierte las variables del ETL en predictores más informativos. Todo lo que se **aprende de los datos** (la mediana de `anio`, el centrado, los vocabularios de plataformas, géneros, editores y desarrolladores, y las frecuencias de editores y desarrolladores) se calcula **solo con `train2`** y se aplica después, sin recalcular, a `test2`. Ninguna transformación usa `rating`, y no se usa ningún modelo para preparar los datos.
+
+### Qué se crea y por qué
+
+| Grupo | Variables nuevas | Justificación (EDA) |
+|-------------------|--------------------------|----------------------------|
+| `anio` | `anio_z`, `anio_z2`, `anio_faltante` | El EDA mostró una relación no lineal (descenso hasta \~2014 y recuperación). El término cuadrático permite que un modelo lineal capture esa curva. Los 155 faltantes se imputan con la mediana de `train2` y se marcan con un indicador, porque no eran completamente aleatorios |
+| Sugerencias | `sugerencias`, `sugerencias_cero` | Los 0 (\~50 juegos) parecen datos no registrados: se marcan y se sustituyen por la mediana de los valores positivos de `train2` |
+| Plataformas | `plat_*` (una por plataforma frecuente), `plat_otro`, `n_plataformas` | Un juego aparece en varias plataformas (hasta 22) y las combinaciones completas se fragmentaban en miles de niveles. Los indicadores por plataforma individual evitan eso |
+| Géneros | `gen_*`, `gen_otro`, `n_generos`, `genero_faltante` | Un juego puede tener varios géneros; hay 19 géneros reales |
+| Editores | `pub_*`, `pub_otro`, `n_publishers`, `exper_pub`, `publisher_faltante` | El editor fue la variable categórica con más separación en el EDA. `exper_pub` es el logaritmo del mayor número de juegos de `train2` entre los editores del juego (tamaño o trayectoria del editor) |
+| Desarrolladores | `dev_*`, `dev_otro`, `n_developers`, `exper_dev`, `developer_faltante` | En la parte 1, el 89.5 % de los desarrolladores caía en `"Other"`. Con indicadores por desarrollador frecuente se recupera información |
+| Relación | `autopublicado` | 1 si el juego comparte al menos un nombre entre `developers` y `publishers` (típico del desarrollo independiente) |
+
+**Umbral de frecuencia.** Se crea un indicador solo para los valores que aparecen en al menos `UMBRAL` juegos de `train2` (30, el mismo corte de la parte 1). Los demás se resumen en un indicador `*_otro`. Con ese criterio un valor nunca queda sin ejemplos en entrenamiento, y los valores nuevos de `test2` caen en `*_otro`.
+
+### Funciones auxiliares
+
+```{r}
+#| label: p2-fe-funciones
+UMBRAL <- 30
+
+# Tabla de frecuencias (en juegos) de los valores de una columna multivalor
+tabla_valores <- function(x) {
+  v <- unlist(str_split(x[!is.na(x)], ", "))
+  t <- table(v)
+  sort(setNames(as.numeric(t), names(t)), decreasing = TRUE)
+}
+
+# Cada celda como un vector de valores (NA -> vector vacío)
+lista_valores <- function(x) {
+  lapply(str_split(x, ", "), \(v) v[!is.na(v)])
+}
+
+# Valores que alcanzan el umbral
+vocabulario <- function(tab, umbral = UMBRAL) names(tab)[tab >= umbral]
+
+# Indicadores 0/1 por valor del vocabulario, más un indicador "otro"
+multi_hot <- function(lista, vocab, prefijo) {
+  n   <- length(lista)
+  idx <- rep(seq_len(n), lengths(lista))
+  val <- unlist(lista, use.names = FALSE)
+  col <- match(val, vocab)
+  ok  <- !is.na(col)
+
+  m <- matrix(0L, nrow = n, ncol = length(vocab))
+  m[cbind(idx[ok], col[ok])] <- 1L
+  colnames(m) <- paste0(prefijo, "_", vocab)
+
+  otro <- integer(n)
+  otro[unique(idx[!ok])] <- 1L
+
+  out <- as_tibble(m, .name_repair = "minimal")
+  out[[paste0(prefijo, "_otro")]] <- otro
+  out
+}
+
+# log(1 + mayor frecuencia, calculada en train, entre los valores de la celda)
+experiencia <- function(lista, tab) {
+  vapply(lista, \(l) {
+    f <- as.numeric(tab[l])
+    f[is.na(f)] <- 0
+    if (length(f) == 0) 0 else log1p(max(f))
+  }, numeric(1))
+}
+```
+
+### Parámetros aprendidos con el entrenamiento
+
+```{r}
+#| label: p2-fe-parametros
+anio_imp_train <- if_else(is.na(train2$anio),
+                          as.integer(round(median(train2$anio, na.rm = TRUE))),
+                          train2$anio)
+
+fe_par <- list(
+  mediana_anio = as.integer(round(median(train2$anio, na.rm = TRUE))),
+  media_anio   = mean(anio_imp_train),
+  sd_anio      = sd(anio_imp_train),
+  mediana_sug  = median(train2$suggestions_count[train2$suggestions_count > 0]),
+  tab_pla      = tabla_valores(train2$platforms),
+  tab_gen      = tabla_valores(train2$genres),
+  tab_pub      = tabla_valores(train2$publishers),
+  tab_dev      = tabla_valores(train2$developers)
+)
+
+fe_par[c("mediana_anio", "media_anio", "sd_anio", "mediana_sug")]
+
+# Tamaño de cada vocabulario (valores con al menos UMBRAL juegos en train2)
+c(plataformas   = length(vocabulario(fe_par$tab_pla)),
+  generos       = length(vocabulario(fe_par$tab_gen)),
+  editores      = length(vocabulario(fe_par$tab_pub)),
+  desarrolladores = length(vocabulario(fe_par$tab_dev)))
+```
+
+### Función de transformación
+
+La misma función, con los mismos parámetros, se aplica a entrenamiento y prueba.
+
+```{r}
+#| label: p2-fe-funcion
+aplicar_fe <- function(datos, par) {
+  l_pla <- lista_valores(datos$platforms)
+  l_gen <- lista_valores(datos$genres)
+  l_pub <- lista_valores(datos$publishers)
+  l_dev <- lista_valores(datos$developers)
+
+  anio_imp <- if_else(is.na(datos$anio), par$mediana_anio, datos$anio)
+
+  base <- tibble(
+    id               = datos$id,
+    rating           = datos$rating,
+    anio_z           = (anio_imp - par$media_anio) / par$sd_anio,
+    anio_z2          = anio_z^2,
+    anio_faltante    = as.integer(is.na(datos$anio)),
+    sugerencias_cero = as.integer(datos$suggestions_count == 0),
+    sugerencias      = if_else(datos$suggestions_count == 0,
+                               par$mediana_sug, datos$suggestions_count)
   )
 
-dim(df5)
-df5 |> summarise(across(c(genero_na, anio_na, developer_unknown, publisher_unknown), sum))
+  otros <- tibble(
+    exper_pub          = experiencia(l_pub, par$tab_pub),
+    exper_dev          = experiencia(l_dev, par$tab_dev),
+    autopublicado      = as.integer(map2_lgl(l_dev, l_pub,
+                                             \(d, p) length(intersect(d, p)) > 0)),
+    genero_faltante    = as.integer(is.na(datos$genres)),
+    developer_faltante = as.integer(is.na(datos$developers)),
+    publisher_faltante = as.integer(is.na(datos$publishers)),
+    # los conteos van al final: n_generos suele ser la suma exacta de los gen_*
+    n_plataformas      = lengths(l_pla),
+    n_generos          = lengths(l_gen),
+    n_publishers       = lengths(l_pub),
+    n_developers       = lengths(l_dev)
+  )
+
+  bind_cols(
+    base,
+    multi_hot(l_pla, vocabulario(par$tab_pla), "plat"),
+    multi_hot(l_gen, vocabulario(par$tab_gen), "gen"),
+    multi_hot(l_pub, vocabulario(par$tab_pub), "pub"),
+    multi_hot(l_dev, vocabulario(par$tab_dev), "dev"),
+    otros
+  ) |>
+    clean_names()
+}
 ```
 
+```{r}
+#| label: p2-fe-aplicar
+train_fe <- aplicar_fe(train2, fe_par)
+test_fe  <- aplicar_fe(test2,  fe_par)
+
+dim(train_fe)
+dim(test_fe)
+```
+
+### Verificación
+
+```{r}
+#| label: p2-fe-verificacion
+# Mismas columnas, mismo orden y mismas filas que los conjuntos originales
+identical(names(train_fe), names(test_fe))
+c(nrow(train_fe) == nrow(train2), nrow(test_fe) == nrow(test2))
+identical(train_fe$id, train2$id)
+identical(test_fe$id,  test2$id)
+
+# Sin NA y el objetivo intacto
+c(na_train = sum(is.na(train_fe)), na_test = sum(is.na(test_fe)))
+all.equal(train_fe$rating, train2$rating)
+
+# Las variables numéricas de train quedan centradas
+train_fe |>
+  summarise(media_anio_z = mean(anio_z), sd_anio_z = sd(anio_z),
+            min_sug = min(sugerencias), n_sug_cero = sum(sugerencias_cero))
+```
+
+```{r}
+#| label: p2-fe-valores-nuevos
+# Juegos de prueba con al menos un valor fuera del vocabulario de train
+test_fe |>
+  summarise(across(c(plat_otro, gen_otro, pub_otro, dev_otro),
+                   \(x) round(100 * mean(x), 1)))
+```
+
+### Filtrado de columnas inútiles
+
+Se revisan dos problemas, solo con `train_fe`: columnas constantes y columnas que son combinación lineal exacta de otras (por ejemplo, `n_generos` suele ser la suma de los indicadores de género). Ambas hacen que la regresión múltiple deje coeficientes sin estimar. Las columnas que se quitan se decidieron con `train_fe` y se quitan igual de `test_fe`.
+
+```{r}
+#| label: p2-fe-filtrado
+X_train <- train_fe |> select(-id, -rating)
+
+cero_var <- names(X_train)[vapply(X_train, \(x) var(x) == 0, logical(1))]
+
+lc <- findLinearCombos(as.matrix(X_train))
+cols_dep <- names(X_train)[lc$remove]
+
+list(varianza_cero = cero_var, combinacion_lineal = cols_dep)
+```
+
+Si `cols_dep` no contiene `n_generos` (u otro conteo) y en cambio señala un indicador, quita a mano el conteo en lugar del indicador: `cols_dep <- "n_generos"`.
+
+```{r}
+#| label: p2-fe-quitar
+cols_quitar <- union(cero_var, cols_dep)
+
+train_fe <- train_fe |> select(-any_of(cols_quitar))
+test_fe  <- test_fe  |> select(-any_of(cols_quitar))
+
+# Ya no quedan dependencias lineales exactas
+findLinearCombos(as.matrix(select(train_fe, -id, -rating)))$remove
+```
+
+### Grupos de variables
+
+Las variables se organizan por grupo para poder medir después cuánto aporta cada técnica (se agregan al modelo base de uno en uno).
+
+```{r}
+#| label: p2-fe-grupos
+nombres <- names(train_fe)
+
+grupos_fe <- list(
+  anio        = intersect(c("anio_z", "anio_z2", "anio_faltante"), nombres),
+  sugerencias = intersect(c("sugerencias", "sugerencias_cero"), nombres),
+  plataformas = intersect(c(nombres[str_starts(nombres, "plat_")], "n_plataformas"), nombres),
+  generos     = intersect(c(nombres[str_starts(nombres, "gen_")], "n_generos",
+                            "genero_faltante"), nombres),
+  editores    = intersect(c(nombres[str_starts(nombres, "pub_")], "n_publishers",
+                            "exper_pub", "publisher_faltante"), nombres),
+  desarrolladores = intersect(c(nombres[str_starts(nombres, "dev_")], "n_developers",
+                                "exper_dev", "developer_faltante"), nombres),
+  relacion    = intersect("autopublicado", nombres)
+)
+
+map_int(grupos_fe, length)
+
+# Todas las columnas predictoras quedaron en algún grupo (debe ser TRUE)
+setequal(unlist(grupos_fe), setdiff(nombres, c("id", "rating")))
+```
+
+### Guardado
+
+```{r}
+#| label: p2-fe-guardar
+write_csv(train_fe, here("Data", "Processed", "gaming_2025_fe_train.csv"))
+write_csv(test_fe,  here("Data", "Processed", "gaming_2025_fe_test.csv"))
+```
+
+Para ajustar un modelo con estos datos, `id` queda fuera de los predictores:
+
+```{r}
+#| label: p2-fe-formula
+datos_train <- train_fe |> select(-id)
+datos_test  <- test_fe  |> select(-id)
+
+formula_fe <- rating ~ .
+```
+### Visualización de la ingenieria de caracteristicas
+
+```{r}
+str(datos_train)
+```
+
+
+### Decisiones y limitaciones
+
+- **Escalado:** no se hace aquí. Los modelos que lo necesitan (kNN, SVM) lo calcularán con `train` dentro de la validación cruzada (`preProcess` en `caret`, `scale` interno en `svm`).
+- **Dimensión:** los indicadores multiplican las columnas (más que en la parte 1), lo que puede perjudicar a kNN. Conviene vigilarlo en el modelado.
+- **Umbral:** `UMBRAL = 30` se hereda de la parte 1; no se ajusta con el objetivo. Si se quisiera cambiar, sería un hiperparámetro más.
+- **Indicadores `*_otro`:** juntan valores muy distintos entre sí (editores y desarrolladores poco frecuentes), por lo que aportan poca información individual.
+- **Imputación:** la mediana de `anio` y la de `sugerencias` son parámetros de `train2`; el indicador de faltante permite que el modelo trate esos casos distinto.
+- **Técnicas que no se aplicaron (se consultarán antes de hacerlo):** codificación por media del objetivo (target encoding), interacciones entre variables, transformaciones logarítmicas de `sugerencias`, discretización de `anio` y cualquier remuestreo.
+
+
+## Ajuste de hiperparámetros
+
+En esta sección se eligen los hiperparámetros de cada modelo con validación cruzada de 10 pliegues **solo dentro de `train2`**, usando los mismos pliegues (`folds_index2`, `folds_out2`, `ctrl2`) para todos. El conjunto de prueba no interviene. La métrica es el RMSE de validación cruzada, que es la misma métrica principal de la parte 1.
+
+| Modelo | Hiperparámetros | Cómo se ajusta |
+|------------------|------------------|------------------------------------|
+| Regresión múltiple | Ninguno | No hay nada que ajustar; solo se registra su RMSE de validación cruzada como referencia |
+| kNN | `k` | `caret` (`method = "knn"`), con centrado y escalado dentro de cada pliegue |
+| Árbol de regresión | `cp` | `caret` (`method = "rpart"`), con regla de una desviación estándar |
+| SVM de regresión | `cost`, `gamma`, `epsilon` | `e1071`, con validación cruzada propia sobre los mismos pliegues (con `caret`/`kernlab` fue demasiado lento en la parte 1) |
+
+Los datos de entrada son los de la ingeniería de características: `datos_train` (sin `id`) y `formula_fe`.
+
+### Línea base y regresión múltiple en validación cruzada
+
+La línea base es predecir, en cada pliegue, la media de los pliegues de entrenamiento. Sirve de referencia para todos los RMSE de validación cruzada de esta sección.
+
+```{r}
+#| label: p2-hp-base
+rmse <- function(obs, pred) sqrt(mean((obs - pred)^2))
+
+rmse_base_cv <- mean(vapply(seq_along(folds_index2), \(k) {
+  y_in  <- train2$rating[folds_index2[[k]]]
+  y_out <- train2$rating[folds_out2[[k]]]
+  rmse(y_out, mean(y_in))
+}, numeric(1)))
+
+rmse_base_cv
+```
+
+```{r}
+#| label: p2-hp-lm
+set.seed(123)
+modelo_lm_hp <- train(
+  formula_fe,
+  data      = datos_train,
+  method    = "lm",
+  trControl = ctrl2,
+  metric    = "RMSE"
+)
+
+modelo_lm_hp$results
+```
+
+Verificación: ningún coeficiente debe quedar sin estimar.
+
+```{r}
+#| label: p2-hp-lm-verif
+length(coef(modelo_lm_hp$finalModel))
+sum(is.na(coef(modelo_lm_hp$finalModel)))   # debe ser 0
+```
+
+### kNN: número de vecinos
+
+La rejilla incluye valores grandes porque, con señal débil, un `k` alto suele estabilizar el promedio (en la parte 1 el mejor fue `k` = 41).
+
+```{r}
+#| label: p2-hp-knn
+set.seed(123)
+tiempo_knn <- system.time(
+  modelo_knn_hp <- train(
+    formula_fe,
+    data       = datos_train,
+    method     = "knn",
+    preProcess = c("center", "scale"),
+    tuneGrid   = expand.grid(k = c(5, 11, 21, 31, 41, 51, 71, 101, 151, 201)),
+    trControl  = ctrl2,
+    metric     = "RMSE"
+  )
+)
+
+tiempo_knn["elapsed"]
+modelo_knn_hp$results
+modelo_knn_hp$bestTune
+```
+
+```{r}
+#| label: p2-hp-knn-grafica
+plot(modelo_knn_hp)
+```
+
+Si el mejor `k` queda en el extremo de la rejilla (5 o 201), se amplía el rango y se vuelve a ajustar.
+
+### Árbol de regresión: parámetro de complejidad
+
+En la parte 1 el árbol se limitó a mano (profundidad 4 y `cp` = 0.002). Aquí se deja crecer más (`maxdepth` = 15, mínimo de 20 juegos por hoja) y se elige `cp` por validación cruzada. Se usa la regla de una desviación estándar: entre los `cp` cuyo RMSE está a menos de una desviación estándar del mejor, se elige el árbol más simple. Con una señal tan débil, eso evita árboles que sobreajustan por una mejora mínima.
+
+```{r}
+#| label: p2-hp-arbol
+ctrl_tree <- ctrl2
+ctrl_tree$selectionFunction <- "oneSE"
+
+set.seed(123)
+modelo_tree_hp <- train(
+  formula_fe,
+  data      = datos_train,
+  method    = "rpart",
+  tuneGrid  = data.frame(cp = c(0.0002, 0.0005, 0.001, 0.002, 0.003, 0.005, 0.01, 0.02)),
+  control   = rpart.control(maxdepth = 15, minbucket = 20),
+  trControl = ctrl_tree,
+  metric    = "RMSE"
+)
+
+modelo_tree_hp$results
+modelo_tree_hp$bestTune    # cp elegido con la regla de una desviación estándar
+```
+
+```{r}
+#| label: p2-hp-arbol-comparacion
+# cp con el RMSE mínimo y cp elegido con la regla de una desviación estándar
+bind_rows(
+  minimo = slice_min(modelo_tree_hp$results, RMSE, n = 1),
+  un_se  = merge(modelo_tree_hp$bestTune, modelo_tree_hp$results),
+  .id = "criterio"
+)
+
+plot(modelo_tree_hp)
+```
+
+Si el `cp` mínimo queda en el extremo inferior de la rejilla (0.0002), conviene probar valores menores. Si se prefiere el árbol con el RMSE mínimo en lugar del más simple, se cambia `"oneSE"` por `"best"` en `ctrl_tree` y se vuelve a ajustar.
+
+### SVM de regresión: `cost`, `gamma` y `epsilon`
+
+Se usa `svm()` de `e1071` con kernel radial, igual que en la parte 1, que estandariza los predictores y el objetivo internamente. En la parte 1 los mejores valores (`cost` = 1, `gamma` = 0.01) estaban en el borde de la rejilla, así que aquí la rejilla es más amplia. El ajuste se hace en tres etapas para limitar el tiempo:
+
+1.  **Rejilla gruesa** de `cost` y `gamma` con 3 pliegues.
+2.  **Confirmación** de las 3 mejores combinaciones con los 10 pliegues.
+3.  **Revisión de `epsilon`** con la mejor combinación (en la parte 1 casi no influyó).
+
+```{r}
+#| label: p2-hp-svm-funcion
+cv_svr <- function(cost, gamma, epsilon = 0.2, folds = 1:3) {
+  errores <- vapply(folds, \(k) {
+    tr <- datos_train[folds_index2[[k]], ]
+    va <- datos_train[folds_out2[[k]], ]
+    m <- svm(
+      formula_fe,
+      data      = tr,
+      type      = "eps-regression",
+      kernel    = "radial",
+      cost      = cost,
+      gamma     = gamma,
+      epsilon   = epsilon,
+      cachesize = 500
+    )
+    rmse(va$rating, predict(m, va))
+  }, numeric(1))
+
+  c(rmse_cv = mean(errores), rmse_sd = sd(errores))
+}
+```
+
+**Etapa 1: rejilla gruesa (3 pliegues).**
+
+```{r}
+#| label: p2-hp-svm-etapa1
+grid_svm <- expand.grid(
+  cost  = c(0.5, 1, 2, 4),
+  gamma = c(0.002, 0.005, 0.01, 0.02)
+)
+
+tiempo_svm1 <- system.time({
+  res <- t(sapply(seq_len(nrow(grid_svm)),
+                  \(i) cv_svr(grid_svm$cost[i], grid_svm$gamma[i])))
+})
+
+grid_svm <- bind_cols(grid_svm, as_tibble(res))
+
+tiempo_svm1["elapsed"]
+arrange(grid_svm, rmse_cv)
+```
+
+```{r}
+#| label: p2-hp-svm-grafica
+ggplot(grid_svm, aes(factor(gamma), factor(cost), fill = rmse_cv)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = round(rmse_cv, 4))) +
+  scale_fill_gradient(low = "steelblue", high = "white", name = "RMSE CV") +
+  labs(title = "SVM: RMSE de validación cruzada (3 pliegues)",
+       x = "gamma", y = "cost")
+```
+
+**Etapa 2: confirmación con los 10 pliegues.**
+
+```{r}
+#| label: p2-hp-svm-etapa2
+top3 <- grid_svm |> slice_min(rmse_cv, n = 3) |> select(cost, gamma)
+
+tiempo_svm2 <- system.time({
+  res10 <- t(sapply(seq_len(nrow(top3)),
+                    \(i) cv_svr(top3$cost[i], top3$gamma[i], folds = 1:10)))
+})
+
+top3 <- bind_cols(top3, as_tibble(res10))
+
+tiempo_svm2["elapsed"]
+arrange(top3, rmse_cv)
+
+mejor_svm <- slice_min(top3, rmse_cv, n = 1)
+mejor_svm
+```
+
+Si la mejor combinación queda en un extremo de la rejilla de la etapa 1 (`cost` = 0.5 o 4; `gamma` = 0.002 o 0.02), se amplía el rango en esa dirección y se repiten las etapas 1 y 2.
+
+**Etapa 3: revisión de `epsilon`.**
+
+```{r}
+#| label: p2-hp-svm-etapa3
+grid_eps <- tibble(epsilon = c(0.05, 0.1, 0.2, 0.4))
+
+res_eps <- t(sapply(grid_eps$epsilon,
+                    \(e) cv_svr(mejor_svm$cost, mejor_svm$gamma, epsilon = e)))
+
+grid_eps <- bind_cols(grid_eps, as_tibble(res_eps))
+grid_eps
+
+mejor_eps <- grid_eps$epsilon[which.min(grid_eps$rmse_cv)]
+mejor_eps
+```
+
+### Resumen de hiperparámetros elegidos
+
+```{r}
+#| label: p2-hp-resumen
+# Fila de validación cruzada del modelo elegido en caret
+fila_cv <- function(m) merge(m$bestTune, m$results)
+
+resumen_hp <- tibble(
+  modelo = c("Línea base (media)", "Regresión múltiple", "kNN",
+             "Árbol de regresión", "SVM"),
+  hiperparametros = c(
+    "—",
+    "ninguno",
+    paste0("k = ", modelo_knn_hp$bestTune$k),
+    paste0("cp = ", modelo_tree_hp$bestTune$cp),
+    paste0("cost = ", mejor_svm$cost, ", gamma = ", mejor_svm$gamma,
+           ", epsilon = ", mejor_eps)
+  ),
+  rmse_cv = c(
+    rmse_base_cv,
+    modelo_lm_hp$results$RMSE,
+    fila_cv(modelo_knn_hp)$RMSE,
+    fila_cv(modelo_tree_hp)$RMSE,
+    mejor_svm$rmse_cv
+  )
+) |>
+  mutate(mejora_vs_base_pct = round(100 * (1 - rmse_cv / rmse_base_cv), 2),
+         rmse_cv = round(rmse_cv, 4))
+
+resumen_hp
+```
+
+```{r}
+#| label: p2-hp-guardar
+# Guarda lo elegido para retomar el trabajo sin repetir el ajuste
+dir.create(here("Data", "Processed"), showWarnings = FALSE, recursive = TRUE)
+
+hiperparametros_p2 <- list(
+  k       = modelo_knn_hp$bestTune$k,
+  cp      = modelo_tree_hp$bestTune$cp,
+  cost    = mejor_svm$cost,
+  gamma   = mejor_svm$gamma,
+  epsilon = mejor_eps
+)
+
+saveRDS(hiperparametros_p2, here("Data", "Processed", "hiperparametros_p2.rds"))
+hiperparametros_p2
+```
+
+### Decisiones y limitaciones
+
+- **Todo con validación cruzada dentro de `train2`.** El conjunto de prueba no se usó para elegir nada; se usará una sola vez, en la evaluación.
+- **Elegir el mejor RMSE de validación cruzada sesga un poco hacia arriba el resultado** (se elige entre varias combinaciones con los mismos pliegues). Por eso la comparación definitiva es la del conjunto de prueba.
+- **Árbol:** el criterio de una desviación estándar favorece un árbol más simple que el de RMSE mínimo; si ambos cp difieren mucho, conviene mencionarlo en el informe.
+- **SVM:** `epsilon` y la rejilla se ajustan con 3 pliegues para limitar el tiempo; solo las 3 mejores combinaciones se confirman con los 10. La rejilla sigue siendo una exploración parcial, no una búsqueda exhaustiva.
+- **kNN:** el escalado estandariza también los indicadores 0/1; los indicadores poco frecuentes quedan con un peso alto en la distancia. Es una decisión heredada de la parte 1 y se puede revisar después.
+- **Diferencias pequeñas entre modelos.** En la parte 1 los cuatro modelos diferían en milésimas de RMSE. Si pasa lo mismo aquí, las diferencias de validación cruzada entre combinaciones de hiperparámetros deben leerse con cuidado, considerando la desviación estándar entre pliegues.
+
+
+## Modelado
+
+En esta sección se ajusta cada modelo final sobre **todo `train2`** con los hiperparámetros elegidos en la sección anterior. El conjunto de prueba no se toca: todo lo que se imprime y grafica aquí usa solo `train2`.
+
+Para cada modelo se reportan dos tipos de resultado, porque no significan lo mismo:
+
+- **Ajuste en entrenamiento:** el modelo predice los mismos juegos con los que se ajustó. Siempre es optimista, y mucho más en modelos flexibles (en el kNN el propio juego cuenta como su vecino).
+- **Fuera de pliegue (OOF):** cada juego de `train2` se predice con un modelo ajustado **sin ese juego**, usando los mismos 10 pliegues de la validación cruzada. Es la mejor aproximación, usando solo `train2`, de cómo se comportará el modelo con juegos nuevos, y es la que sirve para formular hipótesis sobre `test2`.
+
+La diferencia entre ambos indica cuánto sobreajusta el modelo.
+
+### Preparación común
+
+```{r}
+#| label: p2-mod-comun
+# Hiperparámetros elegidos (si se reinició la sesión, se leen del archivo guardado)
+hp <- if (exists("hiperparametros_p2")) hiperparametros_p2 else
+  readRDS(here("Data", "Processed", "hiperparametros_p2.rds"))
+hp
+
+# Clases por terciles de rating, con los cortes de train2 (solo para describir el comportamiento)
+cortes_tr  <- quantile(train2$rating, probs = c(1/3, 2/3))
+a_clase_tr <- function(x) cut(x, breaks = c(-Inf, cortes_tr, Inf),
+                              labels = c("Bajo", "Medio", "Alto"))
+cortes_tr
+```
+
+```{r}
+#| label: p2-mod-funciones
+# --- Métricas -------------------------------------------------------------
+metricas_tr <- function(obs, pred, modelo, tipo) {
+  tibble(
+    modelo   = modelo,
+    tipo     = tipo,
+    RMSE     = rmse(obs, pred),
+    MAE      = mean(abs(obs - pred)),
+    R2       = 1 - sum((obs - pred)^2) / sum((obs - mean(obs))^2),
+    sd_pred  = sd(pred),
+    razon_sd = sd(pred) / sd(obs)      # 1 = misma dispersión que el rating real
+  )
+}
+
+tabla_clases <- function(obs, pred) {
+  tibble(
+    clase     = c("Bajo", "Medio", "Alto"),
+    observado = as.numeric(prop.table(table(a_clase_tr(obs)))),
+    predicho  = as.numeric(prop.table(table(a_clase_tr(pred))))
+  ) |>
+    mutate(across(c(observado, predicho), \(x) round(100 * x, 1)))
+}
+
+# --- Gráficas -------------------------------------------------------------
+graf_obs_pred <- function(obs, pred, titulo) {
+  ggplot(tibble(obs, pred), aes(pred, obs)) +
+    geom_point(alpha = 0.15) +
+    geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "firebrick") +
+    geom_smooth(method = "loess", formula = y ~ x, se = FALSE, color = "steelblue") +
+    coord_cartesian(xlim = range(obs), ylim = range(obs)) +
+    labs(title = titulo,
+         subtitle = "Línea punteada: predicción perfecta. Línea azul: tendencia real",
+         x = "Rating predicho (fuera de pliegue)", y = "Rating observado")
+}
+
+graf_dens <- function(obs, pred, titulo) {
+  bind_rows(tibble(valor = obs, serie = "Observado"),
+            tibble(valor = pred, serie = "Predicho (OOF)")) |>
+    ggplot(aes(valor, fill = serie)) +
+    geom_density(alpha = 0.4) +
+    labs(title = titulo, x = "Rating", y = "Densidad", fill = NULL)
+}
+
+# --- Predicciones fuera de pliegue ----------------------------------------
+# ajustar(tr) devuelve un modelo; predecir(modelo, nuevos) devuelve las predicciones
+oof_pred <- function(ajustar, predecir) {
+  pred <- numeric(nrow(datos_train))
+  for (k in seq_along(folds_index2)) {
+    tr <- datos_train[folds_index2[[k]], ]
+    va <- datos_train[folds_out2[[k]], ]
+    pred[folds_out2[[k]]] <- predecir(ajustar(tr), va)
+  }
+  pred
+}
+```
+
+```{r}
+#| label: p2-mod-ajustadores
+# Una función para ajustar y otra para predecir, por modelo (se reutilizan en OOF y en las curvas de efecto)
+ajustar_lm  <- function(tr) lm(formula_fe, data = tr)
+predecir_lm <- function(mod, nuevos) predict(mod, nuevos)
+
+ajustar_knn <- function(tr) {
+  x  <- select(tr, -rating)
+  pp <- preProcess(x, method = c("center", "scale"))
+  list(pp = pp, m = knnreg(predict(pp, x), tr$rating, k = hp$k))
+}
+predecir_knn <- function(mod, nuevos) {
+  predict(mod$m, predict(mod$pp, select(nuevos, -rating)))
+}
+
+ajustar_tree <- function(tr, xval = 0) {
+  rpart(formula_fe, data = tr, method = "anova",
+        control = rpart.control(cp = hp$cp, maxdepth = 15, minbucket = 20, xval = xval))
+}
+predecir_tree <- function(mod, nuevos) predict(mod, nuevos)
+
+ajustar_svm <- function(tr) {
+  svm(formula_fe, data = tr, type = "eps-regression", kernel = "radial",
+      cost = hp$cost, gamma = hp$gamma, epsilon = hp$epsilon, cachesize = 500)
+}
+predecir_svm <- function(mod, nuevos) as.numeric(predict(mod, nuevos))
+```
+
+**Curvas de efecto (dependencia parcial).** Sirven para interpretar cualquier modelo, incluso los que no tienen coeficientes. Se toma una muestra de 300 juegos de `train2`, se fija una variable en cada valor de una rejilla (dejando las demás como están) y se promedian las predicciones. La curva resultante muestra qué espera el modelo, en promedio, cuando esa variable cambia. Se usan tres variables: año de lanzamiento, sugerencias y experiencia del editor.
+
+```{r}
+#| label: p2-mod-pd
+set.seed(123)
+muestra_pd <- datos_train[sample(nrow(datos_train), 300), ]
+
+grid_pd <- list(
+  anio        = c(1990, 1995, 2000, 2005, 2010, 2015, 2020, 2025),
+  sugerencias = unique(round(quantile(datos_train$sugerencias,
+                                      probs = seq(0.05, 0.95, length.out = 8)))),
+  exper_pub   = unique(round(quantile(datos_train$exper_pub,
+                                      probs = seq(0.05, 0.95, length.out = 8)), 3))
+)
+
+fijar_anio <- function(d, a) {
+  z <- (a - fe_par$media_anio) / fe_par$sd_anio
+  d$anio_z <- z
+  d$anio_z2 <- z^2
+  d$anio_faltante <- 0L
+  d
+}
+fijar_sug <- function(d, g) { d$sugerencias <- g; d$sugerencias_cero <- 0L; d }
+fijar_exp <- function(d, g) { d$exper_pub <- g; d }
+
+pd_curvas <- function(mod, predecir, nombre) {
+  calc <- function(grid, setter) {
+    vapply(grid, \(g) mean(predecir(mod, setter(muestra_pd, g))), numeric(1))
+  }
+  bind_rows(
+    tibble(variable = "Año de lanzamiento", x = grid_pd$anio,
+           pred = calc(grid_pd$anio, fijar_anio)),
+    tibble(variable = "Sugerencias", x = grid_pd$sugerencias,
+           pred = calc(grid_pd$sugerencias, fijar_sug)),
+    tibble(variable = "Experiencia del editor (log)", x = grid_pd$exper_pub,
+           pred = calc(grid_pd$exper_pub, fijar_exp))
+  ) |>
+    mutate(modelo = nombre)
+}
+
+graf_pd <- function(pd) {
+  ggplot(pd, aes(x, pred, color = modelo)) +
+    geom_line() + geom_point() +
+    facet_wrap(~variable, scales = "free_x") +
+    labs(title = "Rating promedio predicho al variar una variable",
+         x = NULL, y = "Rating predicho (promedio)", color = NULL)
+}
+```
+
+### Regresión múltiple
+
+```{r}
+#| label: p2-mod-lm-ajuste
+modelo_lm2 <- ajustar_lm(datos_train)
+
+s_lm <- summary(modelo_lm2)
+tibble(coeficientes = length(coef(modelo_lm2)),
+       sin_estimar  = sum(is.na(coef(modelo_lm2))),
+       R2           = s_lm$r.squared,
+       R2_ajustado  = s_lm$adj.r.squared,
+       sigma        = s_lm$sigma,
+       p_valor_F    = pf(s_lm$fstatistic[1], s_lm$fstatistic[2],
+                         s_lm$fstatistic[3], lower.tail = FALSE))
+```
+
+```{r}
+#| label: p2-mod-lm-coef
+coefs_lm <- coef(s_lm) |>
+  as.data.frame() |>
+  rownames_to_column("termino") |>
+  as_tibble() |>
+  rename(estimado = Estimate, error = `Std. Error`, t = `t value`, p = `Pr(>|t|)`)
+
+# Los 15 términos con mayor |t|
+coefs_lm |>
+  filter(termino != "(Intercept)") |>
+  slice_max(abs(t), n = 15) |>
+  mutate(across(c(estimado, error, t), \(x) round(x, 4)), p = signif(p, 3))
+
+# Cuántos términos son significativos al 5 %
+coefs_lm |> filter(termino != "(Intercept)") |>
+  summarise(significativos = sum(p < 0.05), total = n())
+```
+
+```{r}
+#| label: p2-mod-lm-graf-coef
+#| fig-height: 6
+coefs_lm |>
+  filter(termino != "(Intercept)") |>
+  slice_max(abs(t), n = 20) |>
+  ggplot(aes(estimado, reorder(termino, estimado))) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  geom_pointrange(aes(xmin = estimado - 1.96 * error, xmax = estimado + 1.96 * error)) +
+  labs(title = "Regresión múltiple: 20 términos con mayor |t| (IC 95 %)",
+       subtitle = "Los indicadores 0/1 están en puntos de rating; anio_z y sugerencias tienen otras escalas",
+       x = "Coeficiente estimado", y = NULL)
+```
+
+```{r}
+#| label: p2-mod-lm-anio
+# Efecto del año implícito en anio_z y anio_z2, relativo al año 2013 (la mediana)
+b <- coef(modelo_lm2)
+efecto_anio <- function(a) {
+  z <- (a - fe_par$media_anio) / fe_par$sd_anio
+  b["anio_z"] * z + b["anio_z2"] * z^2
+}
+
+tibble(anio = 1985:2025) |>
+  mutate(efecto = efecto_anio(anio) - efecto_anio(2013)) |>
+  ggplot(aes(anio, efecto)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_line(color = "steelblue", linewidth = 1) +
+  labs(title = "Regresión múltiple: efecto del año de lanzamiento (frente a 2013)",
+       x = "Año", y = "Cambio en rating esperado")
+```
+
+```{r}
+#| label: p2-mod-lm-diag
+# Residuos frente a ajustados (linealidad, varianza) y normalidad de los residuos
+par(mfrow = c(1, 2))
+plot(modelo_lm2, which = 1:2)
+par(mfrow = c(1, 1))
+```
+
+```{r}
+#| label: p2-mod-lm-resultados
+fit_lm_tr <- predecir_lm(modelo_lm2, datos_train)
+oof_lm_tr <- oof_pred(ajustar_lm, predecir_lm)
+
+m_lm <- bind_rows(
+  metricas_tr(datos_train$rating, fit_lm_tr, "Regresión múltiple", "ajuste en train"),
+  metricas_tr(datos_train$rating, oof_lm_tr, "Regresión múltiple", "fuera de pliegue")
+)
+m_lm
+
+tabla_clases(datos_train$rating, oof_lm_tr)
+```
+
+```{r}
+#| label: p2-mod-lm-graf
+graf_obs_pred(datos_train$rating, oof_lm_tr, "Regresión múltiple: observado vs. predicho")
+graf_dens(datos_train$rating, oof_lm_tr, "Regresión múltiple: distribución del rating")
+```
+
+**Cómo leer estos resultados** (completar con lo que se obtenga):
+
+- **R² y R² ajustado:** qué fracción de la variabilidad de `rating` explica el modelo en `train2`. Una diferencia grande entre R² y R² ajustado indica que muchas columnas no aportan.
+- **Coeficientes:** los de mayor |t| muestran qué indicadores (plataformas, géneros, editores) se asocian más con el rating, manteniendo lo demás constante. Pocos términos significativos confirmarían la señal débil del EDA.
+- **Curva del año:** debería reproducir la forma del EDA (descenso y recuperación); si es casi plana, el término cuadrático no aporta.
+- **Residuos:** una curva en el gráfico de residuos frente a ajustados indica no linealidad que el modelo no capta; desviaciones en las colas del QQ indican residuos no normales (esperable por la forma de `rating`).
+- **`razon_sd`:** indica cuánto contrae el modelo sus predicciones respecto al rating real. Un valor bajo (por ejemplo, 0.3) significa predicciones concentradas cerca de la media.
+
+**Hipótesis para `test2`:** (a) el RMSE de prueba debería parecerse al RMSE fuera de pliegue (≈ ___), no al de ajuste (≈ ___); (b) la contracción del gráfico observado vs. predicho se repetirá: casi todas las predicciones caerán en el rango (___, ___); (c) al clasificar en terciles, la proporción predicha por clase (tabla anterior) indica cuántos juegos se mandarán a "Medio".
+
+### kNN
+
+```{r}
+#| label: p2-mod-knn-ajuste
+modelo_knn2 <- ajustar_knn(datos_train)
+
+tibble(k = hp$k,
+       columnas_predictoras = ncol(datos_train) - 1,
+       juegos_en_entrenamiento = nrow(datos_train))
+```
+
+El kNN no tiene coeficientes ni reglas. Para interpretarlo se revisa su hiperparámetro y si la distancia entre juegos tiene sentido con tantas columnas.
+
+```{r}
+#| label: p2-mod-knn-curva
+# RMSE de validación cruzada por k (del ajuste de hiperparámetros)
+modelo_knn_hp$results |>
+  ggplot(aes(k, RMSE)) +
+  geom_ribbon(aes(ymin = RMSE - RMSESD, ymax = RMSE + RMSESD), alpha = 0.2) +
+  geom_line() + geom_point() +
+  geom_vline(xintercept = hp$k, linetype = "dashed", color = "firebrick") +
+  geom_hline(yintercept = rmse_base_cv, linetype = "dotted") +
+  labs(title = "kNN: RMSE de validación cruzada según k",
+       subtitle = "Banda: ± desviación estándar entre pliegues. Punteada horizontal: línea base",
+       x = "Número de vecinos (k)", y = "RMSE")
+```
+
+```{r}
+#| label: p2-mod-knn-distancias
+# ¿Las distancias distinguen a los juegos parecidos de los distintos?
+set.seed(123)
+idx_d <- sample(nrow(datos_train), 500)
+x_esc <- predict(modelo_knn2$pp, select(datos_train, -rating))[idx_d, ]
+d_par <- as.numeric(dist(x_esc))
+
+tibble(media_distancia = mean(d_par), sd_distancia = sd(d_par),
+       cv_distancia = sd(d_par) / mean(d_par),
+       min_sobre_media = min(d_par) / mean(d_par))
+
+ggplot(tibble(d = d_par), aes(d)) +
+  geom_histogram(bins = 40, fill = "steelblue", color = "white") +
+  labs(title = "kNN: distancias entre pares de juegos (muestra de 500)",
+       x = "Distancia en el espacio escalado", y = "Pares")
+```
+
+```{r}
+#| label: p2-mod-knn-resultados
+fit_knn_tr <- predecir_knn(modelo_knn2, datos_train)   # incluye al propio juego como vecino
+oof_knn_tr <- oof_pred(ajustar_knn, predecir_knn)
+
+m_knn <- bind_rows(
+  metricas_tr(datos_train$rating, fit_knn_tr, "kNN", "ajuste en train"),
+  metricas_tr(datos_train$rating, oof_knn_tr, "kNN", "fuera de pliegue")
+)
+m_knn
+
+tabla_clases(datos_train$rating, oof_knn_tr)
+```
+
+```{r}
+#| label: p2-mod-knn-graf
+graf_obs_pred(datos_train$rating, oof_knn_tr, "kNN: observado vs. predicho")
+graf_dens(datos_train$rating, oof_knn_tr, "kNN: distribución del rating")
+```
+
+**Cómo leer estos resultados:**
+
+- **Curva de `k`:** una curva casi plana alrededor del mínimo indica que muchos valores de `k` rinden igual; un mínimo en el extremo derecho indica que el modelo prefiere promediar casi todo el entrenamiento (predice cerca de la media).
+- **Distancias:** un coeficiente de variación bajo (distancias casi iguales entre todos los pares) y un mínimo cercano a la media indican la maldición de la dimensionalidad: los "vecinos más cercanos" no son mucho más parecidos que cualquier otro juego.
+- **Ajuste en train frente a fuera de pliegue:** en el kNN el ajuste en train es optimista por construcción (el juego es su propio vecino), así que la comparación relevante es la de la fila fuera de pliegue.
+
+**Hipótesis para `test2`:** (a) el RMSE de prueba ≈ RMSE fuera de pliegue (___); (b) con `k` = ___, las predicciones estarán muy contraídas (`razon_sd` = ___), por lo que casi no habrá predicciones en los extremos; (c) si el coeficiente de variación de las distancias es bajo, no se espera que el kNN supere a la línea base por mucho.
+
+### Árbol de regresión
+
+```{r}
+#| label: p2-mod-tree-ajuste
+set.seed(123)
+modelo_tree2 <- ajustar_tree(datos_train, xval = 10)   # xval interno solo para mostrar la tabla cp
+
+hojas <- as_tibble(modelo_tree2$frame) |> filter(var == "<leaf>")
+
+tibble(cp = hp$cp,
+       hojas = nrow(hojas),
+       nodos = nrow(modelo_tree2$frame),
+       variables_usadas = length(setdiff(unique(as.character(modelo_tree2$frame$var)),
+                                         "<leaf>")))
+
+printcp(modelo_tree2)
+```
+
+```{r}
+#| label: p2-mod-tree-grafica
+#| fig-width: 14
+#| fig-height: 9
+# Acorta las etiquetas largas de los cortes
+recortar <- function(x, labs, digits, varlen, faclen) {
+  ifelse(nchar(labs) > 18, paste0(substr(labs, 1, 18), "..."), labs)
+}
+
+if (nrow(modelo_tree2$frame) > 1) {
+  rpart.plot(modelo_tree2, type = 4, extra = 101, box.palette = "GnBu",
+             split.fun = recortar, faclen = 0, cex = 0.6)
+} else {
+  message("El árbol quedó reducido a un solo nodo: el cp elegido es demasiado alto.")
+}
+```
+
+Cada nodo muestra el `rating` promedio de los juegos de `train2` que llegan a él, el número de juegos y el porcentaje. Los indicadores se leen como `variable < 0.5` (rama izquierda = el juego **no** tiene ese valor).
+
+```{r}
+#| label: p2-mod-tree-importancia
+imp <- modelo_tree2$variable.importance
+
+if (!is.null(imp)) {
+  tibble(variable = names(imp), importancia = as.numeric(imp)) |>
+    slice_max(importancia, n = 15) |>
+    ggplot(aes(importancia, reorder(variable, importancia))) +
+    geom_col(fill = "steelblue") +
+    labs(title = "Árbol: 15 variables más importantes",
+         x = "Importancia (reducción de error)", y = NULL)
+}
+```
+
+```{r}
+#| label: p2-mod-tree-hojas
+# Cada hoja es un valor posible de predicción
+hojas |>
+  transmute(rating_hoja = round(yval, 3), juegos = n,
+            pct_train = round(100 * n / nrow(datos_train), 1)) |>
+  arrange(desc(juegos))
+
+# Rango de predicciones posibles
+range(hojas$yval)
+```
+
+```{r}
+#| label: p2-mod-tree-resultados
+fit_tree_tr <- predecir_tree(modelo_tree2, datos_train)
+oof_tree_tr <- oof_pred(\(tr) ajustar_tree(tr), predecir_tree)
+
+m_tree <- bind_rows(
+  metricas_tr(datos_train$rating, fit_tree_tr, "Árbol de regresión", "ajuste en train"),
+  metricas_tr(datos_train$rating, oof_tree_tr, "Árbol de regresión", "fuera de pliegue")
+)
+m_tree
+
+c(valores_distintos_ajuste = length(unique(round(fit_tree_tr, 6))),
+  valores_distintos_oof    = length(unique(round(oof_tree_tr, 6))))
+
+tabla_clases(datos_train$rating, oof_tree_tr)
+```
+
+```{r}
+#| label: p2-mod-tree-graf
+graf_obs_pred(datos_train$rating, oof_tree_tr, "Árbol: observado vs. predicho")
+graf_dens(datos_train$rating, oof_tree_tr, "Árbol: distribución del rating")
+```
+
+**Cómo leer estos resultados:**
+
+- **Gráfico del árbol:** el primer corte es la variable que más reduce el error; las ramas más grandes (más % de juegos) describen los perfiles más comunes. Hojas con pocos juegos tienen promedios poco estables.
+- **Importancia:** muestra qué variables sostienen al árbol; compárala con los coeficientes de la regresión múltiple para ver si ambos coinciden en qué importa.
+- **Tabla de hojas:** el árbol solo puede predecir tantos valores distintos como hojas tiene. Con pocas hojas, su gráfico de observado vs. predicho se verá como columnas verticales.
+- **Cortes de clase:** si el promedio de una hoja grande queda muy cerca de 3.80 o 4.08 (los cortes en terciles), un cambio mínimo moverá a cientos de juegos de clase.
+
+**Hipótesis para `test2`:** (a) el RMSE de prueba ≈ RMSE fuera de pliegue (___), y la brecha entre ajuste y fuera de pliegue (___) indica cuánto sobreajusta; (b) las predicciones de prueba solo tomarán los ___ valores de las hojas, con el rango (___, ___); (c) la distribución por clases de prueba se parecerá a la tabla de arriba.
+
+### SVM de regresión
+
+```{r}
+#| label: p2-mod-svm-ajuste
+tiempo_svm_final <- system.time(modelo_svm2 <- ajustar_svm(datos_train))
+tiempo_svm_final["elapsed"]
+
+tibble(cost = hp$cost, gamma = hp$gamma, epsilon = hp$epsilon,
+       vectores_soporte = modelo_svm2$tot.nSV,
+       pct_de_train = round(100 * modelo_svm2$tot.nSV / nrow(datos_train), 1))
+```
+
+El SVM tampoco tiene coeficientes interpretables. El porcentaje de vectores de soporte indica qué tan "pegado" a los datos está: cuanto más alto, más complejo el ajuste (con señal débil es normal que sea alto, porque casi ningún juego queda dentro del margen `epsilon`).
+
+```{r}
+#| label: p2-mod-svm-resultados
+fit_svm_tr <- predecir_svm(modelo_svm2, datos_train)
+oof_svm_tr <- oof_pred(ajustar_svm, predecir_svm)
+
+m_svm <- bind_rows(
+  metricas_tr(datos_train$rating, fit_svm_tr, "SVM", "ajuste en train"),
+  metricas_tr(datos_train$rating, oof_svm_tr, "SVM", "fuera de pliegue")
+)
+m_svm
+
+tabla_clases(datos_train$rating, oof_svm_tr)
+
+# Sesgo: promedio predicho frente a promedio observado
+c(media_obs = mean(datos_train$rating), media_oof = mean(oof_svm_tr))
+```
+
+```{r}
+#| label: p2-mod-svm-graf
+graf_obs_pred(datos_train$rating, oof_svm_tr, "SVM: observado vs. predicho")
+graf_dens(datos_train$rating, oof_svm_tr, "SVM: distribución del rating")
+```
+
+**Cómo leer estos resultados:**
+
+- **Vectores de soporte:** un porcentaje cercano al 100 % significa que casi todos los juegos definen el modelo.
+- **Brecha ajuste/OOF:** el SVM radial puede ajustar muy bien el entrenamiento y generalizar poco; la brecha lo muestra.
+- **Sesgo:** en la parte 1 el SVM tuvo un promedio de predicciones algo mayor al observado; aquí se puede comparar la media predicha con la observada.
+
+**Hipótesis para `test2`:** (a) el RMSE de prueba ≈ RMSE fuera de pliegue (___); (b) con `razon_sd` = ___ las predicciones estarán concentradas alrededor de (___, ___); (c) si la clase "Medio" concentra la mayor parte de las predicciones (ver tabla), el SVM clasificará mal los extremos aunque su error de regresión sea parecido al de los demás.
+
+### Comparación de los cuatro modelos (solo con `train2`)
+
+```{r}
+#| label: p2-mod-resumen
+resumen_modelado <- bind_rows(m_lm, m_knn, m_tree, m_svm) |>
+  mutate(across(c(RMSE, MAE, R2, sd_pred, razon_sd), \(x) round(x, 4)))
+
+# Solo fuera de pliegue (la comparable con juegos nuevos), con la línea base
+resumen_modelado |>
+  filter(tipo == "fuera de pliegue") |>
+  mutate(mejora_vs_base_pct = round(100 * (1 - RMSE / rmse_base_cv), 2)) |>
+  arrange(RMSE)
+
+# Brecha entre ajuste y fuera de pliegue (indicador de sobreajuste)
+resumen_modelado |>
+  select(modelo, tipo, RMSE) |>
+  pivot_wider(names_from = tipo, values_from = RMSE) |>
+  mutate(brecha = `fuera de pliegue` - `ajuste en train`)
+
+rmse_base_cv
+```
+
+```{r}
+#| label: p2-mod-pd-todos
+#| fig-height: 5
+# Curvas de efecto de los cuatro modelos (puede tardar algo por el kNN y el SVM)
+pd_todos <- bind_rows(
+  pd_curvas(modelo_lm2,   predecir_lm,   "Regresión múltiple"),
+  pd_curvas(modelo_knn2,  predecir_knn,  "kNN"),
+  pd_curvas(modelo_tree2, predecir_tree, "Árbol"),
+  pd_curvas(modelo_svm2,  predecir_svm,  "SVM")
+)
+
+graf_pd(pd_todos)
+```
+
+```{r}
+#| label: p2-mod-pd-obs
+# Rating observado según la misma variable, como referencia
+datos_train |>
+  mutate(anio = fe_par$media_anio + anio_z * fe_par$sd_anio,
+         grupo_anio = cut(anio, c(-Inf, 1999, 2004, 2009, 2014, 2019, Inf),
+                          labels = c("≤1999", "2000-04", "2005-09", "2010-14",
+                                     "2015-19", "2020+"))) |>
+  group_by(grupo_anio) |>
+  summarise(juegos = n(), rating_medio = round(mean(rating), 3))
+```
+
+**Cómo usar esta comparación para formular hipótesis sobre `test2`:**
+
+1. **Error esperado:** el RMSE fuera de pliegue de cada modelo es la mejor estimación, usando solo `train2`, de su RMSE en prueba. Si dos modelos difieren en milésimas, no se debe esperar un orden estable en prueba.
+2. **Contracción:** los modelos con `razon_sd` baja casi nunca predecirán valores extremos; conviene anticipar que en clasificación por terciles casi todo irá a "Medio".
+3. **Coincidencia entre modelos:** si las curvas de efecto de los cuatro modelos apuntan en la misma dirección (por ejemplo, un mayor rating esperado para editores con más experiencia), esa señal probablemente sea real; si cada modelo cuenta algo distinto, es más probable que sea ruido.
+4. **Sobreajuste:** una brecha grande entre ajuste y fuera de pliegue (típica del SVM y del árbol con `cp` bajo) anticipa que el RMSE de prueba estará más cerca del fuera de pliegue.
+5. **Diferencia con la parte 1:** estos resultados no se pueden comparar todavía con los de la parte 1, porque allí el split y los pliegues eran otros (ver el recordatorio pendiente en la sección de evaluación).
+
+### Decisiones y limitaciones
+
+- **Las curvas de efecto usan 300 juegos y 8 valores por variable** para que el kNN y el SVM no tarden demasiado. Son una guía, no una medida exacta.
+- **El OOF vuelve a ajustar cada modelo 10 veces** con los hiperparámetros ya elegidos. El SVM es el más lento (conviene `#| cache: true` en esos chunks).
+- **Los hiperparámetros se eligieron con estos mismos pliegues**, así que el RMSE fuera de pliegue es ligeramente optimista; la medida definitiva es la del conjunto de prueba.
+- **Árbol:** el `xval = 10` interno de `rpart` solo sirve para mostrar la tabla `cp`; usa pliegues aleatorios distintos a los de `ctrl2`.

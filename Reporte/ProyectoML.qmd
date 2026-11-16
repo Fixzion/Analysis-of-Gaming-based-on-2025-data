@@ -196,7 +196,6 @@ df1 |>
   )
 ```
 
-
 ```{r}
 #| label: rating-vs-sugerencias
 ggplot(df_rel, aes(suggestions_count, rating)) +
@@ -260,7 +259,6 @@ df_rel |>
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5))
 ```
 
-
 ```{r}
 #| label: fig-juegos-por-anio
 #| fig-cap: "Juegos por año de lanzamiento (desde 1985). En naranja, 2025 (incompleto); en rojo, los lanzamientos con fecha exacta 1 de enero."
@@ -289,7 +287,6 @@ ggplot(por_anio, aes(x = anio)) +
        x = "Año", y = "Número de juegos")
 ```
 
-
 ```{r}
 #| label: tbl-fechas-repetidas
 
@@ -300,7 +297,6 @@ df1 |>
   count(fecha, sort = TRUE) |>
   head(10)
 ```
-
 
 **Concluciones:** *rating (objetivo):* Media 3.91, mediana 3.93, desviación estándar 0.34, rango de 3.29 a 5.00 y mitad central entre 3.72 y 4.17. Asimetría de -0.18 con la fórmula manual. profiling_num() puede dar un valor ligeramente distinto. El histograma no es una campana: hay un bloque entre 3.3 y 3.5, un hueco casi vacío entre 3.5 y 3.68, un cuerpo principal hasta \~4.4 y una cola corta hacia 5. La causa del hueco sigue sin explicarse. Por IQR, los límites rondan 3.05 y 4.84, y solo hay 2 atípicos altos (5.00 y 4.86). Línea base para la regresión: predecir siempre la media da un RMSE de \~0.34.
 
@@ -377,7 +373,6 @@ df1 |> count(n_generos = str_count(genres, ",") + 1)
 df1 |> count(n_plataformas = str_count(platforms, ",") + 1)
 ```
 
-
 ```{r}
 #| label: fig-n-valores-por-juego
 #| fig-cap: "Número de géneros y de plataformas por juego (solo juegos con dato)."
@@ -396,8 +391,6 @@ ggplot(n_valores, aes(x = n)) +
        x = "Número de valores por juego", y = "Número de juegos")
 ```
 
-
-
 ```{r}
 #| label: tbl-n-valores-resumen
 
@@ -408,7 +401,6 @@ n_valores |>
             maximo   = max(n),
             pct_un_valor = round(100 * mean(n == 1), 1))
 ```
-
 
 ```{r}
 #| label: nombres-partidos
@@ -444,7 +436,6 @@ ggplot(df1, aes(x = suggestions_count)) +
 
 La variable es unimodal y asimétrica a la derecha. La mayor parte de los juegos se concentra entre 200 y 500 sugerencias, con un máximo cerca de 300 a 400. Después de unas 700 sugerencias la frecuencia cae casi a cero, y la cola larga llega hasta unas 1,750. La barra roja marca 50 juegos con 0 sugerencias, separados del resto de la distribución. Esto sugiere que el 0 no es un valor “natural” sino probablemente un dato no registrado o ausente.
 
-
 ```{r}
 #| label: fig-suggestions-box
 #| fig-cap: "Boxplot de suggestions_count. Los puntos rojos son los juegos con 0 sugerencias."
@@ -457,7 +448,6 @@ ggplot(df1, aes(x = suggestions_count, y = "")) +
 ```
 
 La mediana ronda las 335 sugerencias y el rango intercuartílico va aproximadamente de 210 a 480. El bigote derecho llega a unas 880, y más allá hay outliers que se extienden hasta cerca de 1,720. Los puntos rojos en 0 no son outliers según la regla del IQR, porque el límite inferior sería negativo. Se destacan porque son sospechosos por su naturaleza. Se recomienda tratarlos como valores faltantes (NA) o evaluar si se excluyen, y considerar una transformación (log o raíz) para la cola derecha si se usa esta variable en modelos.
-
 
 #### Rating por género
 
@@ -480,7 +470,7 @@ ggplot(rating_gen, aes(x = genero, y = rating)) +
   labs(title = "Rating por género", x = NULL, y = "Rating")
 ```
 
-La línea roja discontinua marca el rating global (~3.91). Los géneros con mayor mediana son Educational (~4.0), Platformer (~3.98), Racing (~3.96), Fighting (~3.95) y RPG (~3.94). Los más bajos son Indie (~3.83), Sports (~3.84), Simulation (~3.86), Casual y Family. La diferencia entre el extremo superior y el inferior es de apenas ~0.15 puntos, y las cajas se traslapan casi por completo, así que el género discrimina poco el rating. Además, Educational (60), Board Games (59) y Card (74) tienen pocas observaciones, por lo que sus medianas son menos confiables. Los whiskers inferiores se detienen en ~3.3 en todos los grupos, lo que sugiere que la variable está truncada o filtrada por debajo de ese valor.
+La línea roja discontinua marca el rating global (\~3.91). Los géneros con mayor mediana son Educational (\~4.0), Platformer (\~3.98), Racing (\~3.96), Fighting (\~3.95) y RPG (\~3.94). Los más bajos son Indie (\~3.83), Sports (\~3.84), Simulation (\~3.86), Casual y Family. La diferencia entre el extremo superior y el inferior es de apenas \~0.15 puntos, y las cajas se traslapan casi por completo, así que el género discrimina poco el rating. Además, Educational (60), Board Games (59) y Card (74) tienen pocas observaciones, por lo que sus medianas son menos confiables. Los whiskers inferiores se detienen en \~3.3 en todos los grupos, lo que sugiere que la variable está truncada o filtrada por debajo de ese valor.
 
 ```{r}
 #| label: tbl-rating-por-genero
@@ -523,8 +513,7 @@ rating_por_top(df1, "platforms", k = 12) +
 
 ```
 
-PlayStation 2 (~4.0) y PlayStation 5 (~3.95) tienen las medianas más altas, seguidas de Android e iOS (~3.91). En el extremo bajo están Linux, PlayStation 4, Xbox 360 y Xbox One (~3.86 a 3.87). PC, con 6,504 juegos, tiene la caja más ancha y el rango más amplio (llega hasta 5.0), reflejo de su gran heterogeneidad de catálogo. El efecto de PS2 podría deberse a un sesgo de supervivencia: sus juegos mal valorados son menos recordados y votados. Las diferencias siguen siendo pequeñas, de ~0.15 puntos. Al sumar los conteos (~19,500) y superar el total de juegos, se ve que un mismo juego aparece en varias plataformas. Las observaciones no son independientes, y conviene tenerlo en cuenta en el modelado.
-
+PlayStation 2 (\~4.0) y PlayStation 5 (\~3.95) tienen las medianas más altas, seguidas de Android e iOS (\~3.91). En el extremo bajo están Linux, PlayStation 4, Xbox 360 y Xbox One (\~3.86 a 3.87). PC, con 6,504 juegos, tiene la caja más ancha y el rango más amplio (llega hasta 5.0), reflejo de su gran heterogeneidad de catálogo. El efecto de PS2 podría deberse a un sesgo de supervivencia: sus juegos mal valorados son menos recordados y votados. Las diferencias siguen siendo pequeñas, de \~0.15 puntos. Al sumar los conteos (\~19,500) y superar el total de juegos, se ve que un mismo juego aparece en varias plataformas. Las observaciones no son independientes, y conviene tenerlo en cuenta en el modelado.
 
 ```{r}
 #| label: fig-rating-editores
@@ -535,8 +524,7 @@ rating_por_top(df1, "publishers", k = 12) +
   labs(title = "Rating por editor")
 ```
 
-Es la variable categórica con mayor separación entre grupos. Nintendo lidera con una mediana de ~4.1 y una caja desplazada a la derecha (~3.87 a 4.3). Le siguen Sony Computer Entertainment (~4.05), Capcom (~4.03), SEGA y Konami (~4.0). En la parte baja están Ubisoft (~3.9) y THQ (~3.87), este último con la caja más desplazada hacia valores bajos. Square Enix muestra una caja amplia, con una mediana baja pero un tercer cuartil alto, lo que indica un catálogo desigual. Los editores con trayectoria y franquicias consolidadas tienden a tener ratings más altos, por lo que el editor parece un predictor más informativo que el género o la plataforma. Aun así, solo se muestran los editores más grandes (103 a 499 juegos), por lo que el patrón no necesariamente se extiende a editores pequeños.
-
+Es la variable categórica con mayor separación entre grupos. Nintendo lidera con una mediana de \~4.1 y una caja desplazada a la derecha (\~3.87 a 4.3). Le siguen Sony Computer Entertainment (\~4.05), Capcom (\~4.03), SEGA y Konami (\~4.0). En la parte baja están Ubisoft (\~3.9) y THQ (\~3.87), este último con la caja más desplazada hacia valores bajos. Square Enix muestra una caja amplia, con una mediana baja pero un tercer cuartil alto, lo que indica un catálogo desigual. Los editores con trayectoria y franquicias consolidadas tienden a tener ratings más altos, por lo que el editor parece un predictor más informativo que el género o la plataforma. Aun así, solo se muestran los editores más grandes (103 a 499 juegos), por lo que el patrón no necesariamente se extiende a editores pequeños.
 
 #### Rating y año de lanzamiento
 
@@ -554,35 +542,23 @@ df_rel |>
        x = "Año", y = "Rating")
 ```
 
-La curva de suavizado (LOESS, en rojo) muestra una tendencia no lineal. El rating se mantiene en ~4.0 durante los años 90 y principios de los 2000, baja de forma sostenida hasta un mínimo de ~3.83 hacia 2014 y se recupera hasta ~3.98 en 2025, volviendo a niveles cercanos al global. La relación es débil: el cambio de la curva (~0.2) es pequeño frente a la dispersión de los datos (3.3 a 5.0). Las bandas horizontales en 3.33, 3.5 y 4.0 indican que muchos ratings son promedios de pocas votaciones, lo que genera valores discretos. La mayor densidad de puntos bajos entre 2010 y 2020 coincide con el aumento de lanzamientos (indie, móvil), que diluye el promedio. Las bandas de confianza se ensanchan en los extremos (1990 y 2025) por la menor cantidad de datos.
-
+La curva de suavizado (LOESS, en rojo) muestra una tendencia no lineal. El rating se mantiene en \~4.0 durante los años 90 y principios de los 2000, baja de forma sostenida hasta un mínimo de \~3.83 hacia 2014 y se recupera hasta \~3.98 en 2025, volviendo a niveles cercanos al global. La relación es débil: el cambio de la curva (\~0.2) es pequeño frente a la dispersión de los datos (3.3 a 5.0). Las bandas horizontales en 3.33, 3.5 y 4.0 indican que muchos ratings son promedios de pocas votaciones, lo que genera valores discretos. La mayor densidad de puntos bajos entre 2010 y 2020 coincide con el aumento de lanzamientos (indie, móvil), que diluye el promedio. Las bandas de confianza se ensanchan en los extremos (1990 y 2025) por la menor cantidad de datos.
 
 ### Conclusiones (EDA)
 
 #### Concluciones 1
 
-• Calidad. Quedan 8,978 juegos únicos (1,025 duplicados eliminados). rating no tiene NA. En total, 1,004 juegos (11.2 %) tienen al menos un NA en anio, platforms, developers, genres o publishers, y 135 carecen de developers y publishers a la vez.
-• Faltantes no aleatorios. En una revisión preliminar, los juegos sin developers o sin publishers tienen un rating promedio más alto (≈ 4.05 y 4.03) que los que sí los tienen (≈ 3.90). Esto sugiere que la ausencia no es completamente aleatoria (MCAR), por lo que eliminar todas las filas
-incompletas podría sesgar los resultados.
-• Variable objetivo. Rango de 3.29 a 5.00, media 3.91, desviación estándar 0.34; la distribución es multimodal: un bloque bajo (22.3 % de los juegos con rating ≤ 3.5), un hueco casi vacío (3 juegos) entre 3.5 y 3.68 sin explicar y un pico en 4.00. La línea base es un RMSE de ≈ 0.34.
-• Señal débil. Las relaciones numéricas con rating son muy débiles y los juegos más recientes tienden a tener ratings algo menores.
-• Categóricas. Hay 19 géneros reales y 51 plataformas; developers y publishers tienen cardinalidad muy alta. Decisiones para el tratamiento
-• Se confirma rating como variable objetivo (regresión).
-• id, name, image y description se descartan del modelo; updated se excluye como predictora.
-• suggestions_count se conserva con reserva: su significado está por confirmar y podría ser posterior al éxito del juego.
-• Las columnas multivalor se mantienen como combinaciones completas y los niveles poco frecuentes se agrupan.
-• Los faltantes categóricos pasan a la categoría “Unknown” y anio se imputa con la mediana (calculada antes de la partición, como se documenta en la sección 6.5).
+• Calidad. Quedan 8,978 juegos únicos (1,025 duplicados eliminados). rating no tiene NA. En total, 1,004 juegos (11.2 %) tienen al menos un NA en anio, platforms, developers, genres o publishers, y 135 carecen de developers y publishers a la vez. • Faltantes no aleatorios. En una revisión preliminar, los juegos sin developers o sin publishers tienen un rating promedio más alto (≈ 4.05 y 4.03) que los que sí los tienen (≈ 3.90). Esto sugiere que la ausencia no es completamente aleatoria (MCAR), por lo que eliminar todas las filas incompletas podría sesgar los resultados. • Variable objetivo. Rango de 3.29 a 5.00, media 3.91, desviación estándar 0.34; la distribución es multimodal: un bloque bajo (22.3 % de los juegos con rating ≤ 3.5), un hueco casi vacío (3 juegos) entre 3.5 y 3.68 sin explicar y un pico en 4.00. La línea base es un RMSE de ≈ 0.34. • Señal débil. Las relaciones numéricas con rating son muy débiles y los juegos más recientes tienden a tener ratings algo menores. • Categóricas. Hay 19 géneros reales y 51 plataformas; developers y publishers tienen cardinalidad muy alta. Decisiones para el tratamiento • Se confirma rating como variable objetivo (regresión). • id, name, image y description se descartan del modelo; updated se excluye como predictora. • suggestions_count se conserva con reserva: su significado está por confirmar y podría ser posterior al éxito del juego. • Las columnas multivalor se mantienen como combinaciones completas y los niveles poco frecuentes se agrupan. • Los faltantes categóricos pasan a la categoría “Unknown” y anio se imputa con la mediana (calculada antes de la partición, como se documenta en la sección 6.5).
 
 #### Concluciones 2 - Relaciones entre variables
 
-El análisis exploratorio muestra que rating se concentra en un rango estrecho (~3.3 a 5.0) con una media global de ~3.91, y que ninguna variable categórica o temporal explica por sí sola una parte grande de su variabilidad. Las diferencias entre grupos son modestas (≈0.15 a 0.25 puntos) y las distribuciones se traslapan mucho. El editor es la variable con mayor poder de separación (Nintendo, Sony y Capcom frente a THQ y Ubisoft), seguido de la plataforma y, por último, el género. El año de lanzamiento presenta un patrón no lineal (descenso hasta ~2014 y recuperación posterior) que sugiere incluirlo con una transformación flexible, no como efecto lineal.
+El análisis exploratorio muestra que rating se concentra en un rango estrecho (\~3.3 a 5.0) con una media global de \~3.91, y que ninguna variable categórica o temporal explica por sí sola una parte grande de su variabilidad. Las diferencias entre grupos son modestas (≈0.15 a 0.25 puntos) y las distribuciones se traslapan mucho. El editor es la variable con mayor poder de separación (Nintendo, Sony y Capcom frente a THQ y Ubisoft), seguido de la plataforma y, por último, el género. El año de lanzamiento presenta un patrón no lineal (descenso hasta \~2014 y recuperación posterior) que sugiere incluirlo con una transformación flexible, no como efecto lineal.
 
 Además, el EDA deja varias alertas de calidad de datos y modelado:
 
 - suggestions_count tiene 50 valores en 0, probablemente faltantes, y una cola derecha larga que sugiere transformar la variable.
-- rating parece truncado en ~3.3 y toma valores discretos por tener pocas votaciones, lo que sugiere ponderar o filtrar por número de reseñas.
+- rating parece truncado en \~3.3 y toma valores discretos por tener pocas votaciones, lo que sugiere ponderar o filtrar por número de reseñas.
 - Las categorías con pocas observaciones (Educational, Board Games, Card) y los juegos presentes en varias plataformas generan sesgo e incumplen la independencia.
-
 
 ## Transformación/Tratamiento de los datos
 
@@ -706,6 +682,19 @@ df2 |>
 df2 |> summarise(media = mean(rating), sd = sd(rating))
 ```
 
+```{r}
+#| label: guardar-limpio
+dir.create(here("Data", "Processed"), showWarnings = FALSE, recursive = TRUE)
+
+ruta_limpio <- here("Data", "Processed", "gaming_2025_limpio.csv")
+write_csv(df2, ruta_limpio)
+
+# Verificación
+chk2 <- read_csv(ruta_limpio, show_col_types = FALSE)
+dim(chk2)                       # 8963 filas y 14 columnas
+identical(chk2$id, df2$id)      # mismo orden
+```
+
 **Interpretación:**
 
 - Pasa de 8,978 a 8,963 filas, 4 pre-lanzamientos y 11 juegos sin plataforma.
@@ -716,7 +705,7 @@ df2 |> summarise(media = mean(rating), sd = sd(rating))
 ### Selección de columnas
 
 | Variable | Decisión | Motivo |
-|------------------|------------------|------------------------------------|
+|-------------------|-------------------|-----------------------------------|
 | id | Conservar como llave | Permite volver a df1; no es predictora |
 | rating | Variable objetivo | No se imputa ni se transforma |
 | anio, suggestions_count | Predictoras numéricas | anio reemplaza a released |
@@ -1836,7 +1825,7 @@ resultados_test |>
 ### Resultados en el conjunto de prueba
 
 | Modelo | RMSE | MAE | R² | R² (corr.²) | Mejora RMSE vs. línea base | Exactitud | Kappa | F1 prom. | Exact. balanceada prom. |
-|---|---|---|---|---|---|---|---|---|---|
+|--------|--------|--------|--------|--------|--------|--------|--------|--------|--------|
 | Árbol de regresión | ≈ 0.3255 | 0.265 | 0.087 | 0.088 | 4.45% | 0.395 | 0.108 | 0.334 | 0.555 |
 | SVM | ≈ 0.3259 | 0.265 | 0.085 | 0.089 | 4.33% | 0.349 | 0.048 | 0.267 | 0.525 |
 | kNN | ≈ 0.3262 | 0.268 | 0.083 | 0.085 | 4.26% | 0.374 | 0.081 | 0.327 | 0.541 |
@@ -1861,10 +1850,10 @@ La línea base (predecir siempre la media del entrenamiento) tiene un RMSE de 0.
 
 ### Comparación práctica de los modelos
 
-| | Regresión múltiple | kNN | Árbol | SVM |
-|---|---|---|---|---|
+|   | Regresión múltiple | kNN | Árbol | SVM |
+|---------------|---------------|---------------|---------------|---------------|
 | Interpretabilidad | Alta (coeficientes) | Nula | Alta (reglas y gráfico) | Nula |
-| Costo de ajuste | Segundos | Minutos | ~1 segundo | El más alto (decenas de minutos con `caret`; menos con `e1071` y una rejilla reducida) |
+| Costo de ajuste | Segundos | Minutos | \~1 segundo | El más alto (decenas de minutos con `caret`; menos con `e1071` y una rejilla reducida) |
 | Costo de predicción | Mínimo | Alto (distancias contra todo el entrenamiento) | Mínimo | Alto (5,970 vectores de soporte) |
 | Relaciones no lineales | No | Sí | Sí | Sí |
 | Estabilidad | Alta | Media | Baja (sensible a los datos) | Media |
@@ -1872,10 +1861,10 @@ La línea base (predecir siempre la media del entrenamiento) tiene un RMSE de 0.
 
 ### Conclusiones
 
-1. **Con estas variables, `rating` es muy difícil de predecir.** Los cuatro modelos, de familias muy distintas (lineal, local, por particiones y con kernel), alcanzan prácticamente el mismo error de prueba, con una mejora de ~4% sobre la media y un R² cercano al 8%. Que enfoques tan diferentes converjan al mismo resultado sugiere que el límite está en la información de los predictores y no en el algoritmo, lo que concuerda con las correlaciones débiles del EDA.
-2. **Ningún modelo es claramente superior en regresión.** El árbol obtiene los mejores números en la mayoría de métricas, pero su ventaja sobre la regresión múltiple (0.001 de RMSE) es mínima y no debería presentarse como una diferencia real sin una prueba que la respalde.
-3. **Se recomienda el árbol de regresión como modelo de esta versión,** por tres razones: obtiene los mejores resultados o empata en casi todas las métricas, es el más barato de ajustar y su estructura se puede leer y explicar. La regresión múltiple es una alternativa igualmente defendible, con la ventaja de ofrecer coeficientes y de ser el punto de referencia natural. El kNN y el SVM, más costosos y sin interpretación, no aportan una mejora que los justifique.
-4. **La expectativa inicial se cumplió solo en parte.** Se esperaba un R² bajo y un RMSE cercano a la línea base en los cuatro modelos, lo que se confirmó. También se anticipó que el kNN sería el más afectado por las 131 columnas, pero en la práctica quedó a la par del resto.
+1.  **Con estas variables, `rating` es muy difícil de predecir.** Los cuatro modelos, de familias muy distintas (lineal, local, por particiones y con kernel), alcanzan prácticamente el mismo error de prueba, con una mejora de \~4% sobre la media y un R² cercano al 8%. Que enfoques tan diferentes converjan al mismo resultado sugiere que el límite está en la información de los predictores y no en el algoritmo, lo que concuerda con las correlaciones débiles del EDA.
+2.  **Ningún modelo es claramente superior en regresión.** El árbol obtiene los mejores números en la mayoría de métricas, pero su ventaja sobre la regresión múltiple (0.001 de RMSE) es mínima y no debería presentarse como una diferencia real sin una prueba que la respalde.
+3.  **Se recomienda el árbol de regresión como modelo de esta versión,** por tres razones: obtiene los mejores resultados o empata en casi todas las métricas, es el más barato de ajustar y su estructura se puede leer y explicar. La regresión múltiple es una alternativa igualmente defendible, con la ventaja de ofrecer coeficientes y de ser el punto de referencia natural. El kNN y el SVM, más costosos y sin interpretación, no aportan una mejora que los justifique.
+4.  **La expectativa inicial se cumplió solo en parte.** Se esperaba un R² bajo y un RMSE cercano a la línea base en los cuatro modelos, lo que se confirmó. También se anticipó que el kNN sería el más afectado por las 131 columnas, pero en la práctica quedó a la par del resto.
 
 ### Limitaciones
 
